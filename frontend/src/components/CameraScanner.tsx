@@ -1,14 +1,14 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {StyleSheet, Text, View, ViewStyle} from 'react-native';
+import {Animated, StyleSheet, View, ViewStyle} from 'react-native';
 import {
   Camera,
   useCameraDevice,
   useCameraPermission,
   useCodeScanner,
 } from 'react-native-vision-camera';
-import {PrimaryButton} from './PrimaryButton';
+import {AppText, Button} from './ui';
 import {TorchButton} from './TorchButton';
-import {Colors, FontSize, Spacing} from '../constants/theme';
+import {DukaanColors, Palette, Space} from '../constants/theme';
 
 interface Props {
   /** Camera runs only when true (pause while a modal/other screen is up). */
@@ -23,6 +23,9 @@ interface Props {
  *
  * Extracted so the Phase 2 billing screen can scan without duplicating camera
  * setup. (Phase 1 ScanScreen is left as-is to avoid restructuring tested code.)
+ *
+ * B2: DUKAAN viewfinder — corner-bracket reticle + an orange "laser" line that
+ * sweeps while the camera is active. Camera/scan logic is unchanged.
  */
 export function CameraScanner({
   isActive,
@@ -45,6 +48,31 @@ export function CameraScanner({
       requestPermission();
     }
   }, [hasPermission, requestPermission]);
+
+  // Sweeping laser animation, only while the camera is active.
+  const laser = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!isActive) {
+      laser.stopAnimation();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(laser, {
+          toValue: 1,
+          duration: 1400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(laser, {
+          toValue: 0,
+          duration: 1400,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isActive, laser]);
 
   const codeScanner = useCodeScanner({
     codeTypes: [
@@ -69,8 +97,13 @@ export function CameraScanner({
   if (!hasPermission) {
     return (
       <View style={[styles.placeholder, style]}>
-        <Text style={styles.message}>Camera permission is needed to scan.</Text>
-        <PrimaryButton label="Grant camera access" onPress={requestPermission} />
+        <AppText variant="h3" center>
+          Camera access needed
+        </AppText>
+        <AppText variant="bodySm" color={DukaanColors.textMuted} center>
+          Barcode scan karne ke liye camera permission chahiye.
+        </AppText>
+        <Button title="Grant camera access" onPress={requestPermission} />
       </View>
     );
   }
@@ -78,10 +111,17 @@ export function CameraScanner({
   if (device == null) {
     return (
       <View style={[styles.placeholder, style]}>
-        <Text style={styles.message}>No camera found on this device.</Text>
+        <AppText variant="bodySm" color={DukaanColors.textMuted} center>
+          No camera found on this device.
+        </AppText>
       </View>
     );
   }
+
+  const laserY = laser.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-58, 58], // within the reticle height
+  });
 
   return (
     <View style={[styles.container, style]}>
@@ -93,7 +133,20 @@ export function CameraScanner({
         torch={isActive && torchOn ? 'on' : 'off'}
         codeScanner={codeScanner}
       />
-      <View pointerEvents="none" style={styles.frame} />
+
+      {/* Corner-bracket reticle + sweeping laser. */}
+      <View pointerEvents="none" style={styles.reticle}>
+        <View style={[styles.corner, styles.tl]} />
+        <View style={[styles.corner, styles.tr]} />
+        <View style={[styles.corner, styles.bl]} />
+        <View style={[styles.corner, styles.br]} />
+        {isActive && (
+          <Animated.View
+            style={[styles.laser, {transform: [{translateY: laserY}]}]}
+          />
+        )}
+      </View>
+
       {device.hasTorch ? (
         <TorchButton
           on={torchOn}
@@ -105,28 +158,49 @@ export function CameraScanner({
   );
 }
 
+const BRACKET = 28;
+const BORDER = 3;
+const RETICLE_W = '64%';
+
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#000',
+    backgroundColor: '#0B0E13',
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
   placeholder: {
-    backgroundColor: Colors.surface,
+    backgroundColor: DukaanColors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.lg,
-    gap: Spacing.md,
+    padding: Space.lg,
+    gap: Space.md,
   },
-  message: {color: Colors.text, fontSize: FontSize.md, textAlign: 'center'},
-  frame: {
-    width: '60%',
-    aspectRatio: 2.2,
-    borderWidth: 3,
-    borderColor: Colors.text,
-    borderRadius: 14,
-    opacity: 0.8,
+  reticle: {
+    width: RETICLE_W,
+    aspectRatio: 1.9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  torch: {position: 'absolute', top: Spacing.sm, right: Spacing.sm},
+  corner: {
+    position: 'absolute',
+    width: BRACKET,
+    height: BRACKET,
+    borderColor: '#FFFFFF',
+  },
+  tl: {top: 0, left: 0, borderTopWidth: BORDER, borderLeftWidth: BORDER, borderTopLeftRadius: 12},
+  tr: {top: 0, right: 0, borderTopWidth: BORDER, borderRightWidth: BORDER, borderTopRightRadius: 12},
+  bl: {bottom: 0, left: 0, borderBottomWidth: BORDER, borderLeftWidth: BORDER, borderBottomLeftRadius: 12},
+  br: {bottom: 0, right: 0, borderBottomWidth: BORDER, borderRightWidth: BORDER, borderBottomRightRadius: 12},
+  laser: {
+    width: '82%',
+    height: 2.5,
+    borderRadius: 2,
+    backgroundColor: Palette.orange[400],
+    shadowColor: Palette.orange[400],
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+  },
+  torch: {position: 'absolute', top: Space.sm, right: Space.sm},
 });

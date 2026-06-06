@@ -1,6 +1,7 @@
 import React from 'react';
-import {StyleSheet, Text, View} from 'react-native';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {StyleSheet, View} from 'react-native';
+import {AppText} from './ui';
+import {DukaanColors, Elevation, Palette, Radii, Space} from '../constants/theme';
 import {formatPrice} from '../utils/format';
 
 interface Props {
@@ -12,48 +13,49 @@ interface Props {
 
 /**
  * The key Phase-1 proof: after a scan, this card shows the recognised product
- * (name + price) clearly and instantly. Floats over the camera.
+ * (name + price) clearly and instantly. Floats over the camera (DUKAAN styling:
+ * teal accent when matched, orange when just saved).
  */
 export function MatchedCard({name, price, kind}: Props): React.JSX.Element {
-  const accent = kind === 'saved' ? Colors.primary : Colors.success;
-  const heading = kind === 'saved' ? 'SAVED' : 'MATCHED';
+  const saved = kind === 'saved';
+  const accent = saved ? DukaanColors.primary : DukaanColors.teal;
+  const tagBg = saved ? Palette.orange[100] : Palette.teal[100];
+  const tagText = saved ? Palette.orange[700] : Palette.teal[600];
+  const heading = saved ? 'SAVED' : 'MATCHED';
 
   return (
     <View style={[styles.card, {borderColor: accent}]}>
-      <Text style={[styles.heading, {color: accent}]}>{heading}</Text>
-      <Text style={styles.name} numberOfLines={2}>
+      <View style={[styles.tag, {backgroundColor: tagBg}]}>
+        <AppText variant="cap" weight="700" color={tagText}>
+          {heading}
+        </AppText>
+      </View>
+      <AppText variant="h2" center numberOfLines={2}>
         {name}
-      </Text>
-      <Text style={styles.price}>{formatPrice(price)}</Text>
+      </AppText>
+      <AppText variant="h1" numeric style={styles.price}>
+        {formatPrice(price)}
+      </AppText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
+    backgroundColor: DukaanColors.surface,
+    borderRadius: Radii.lg,
     borderWidth: 2,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
+    paddingVertical: Space.lg,
+    paddingHorizontal: Space.lg,
     alignItems: 'center',
+    gap: Space.sm,
+    ...Elevation.md,
   },
-  heading: {
-    fontSize: FontSize.sm,
-    fontWeight: '800',
-    letterSpacing: 2,
-    marginBottom: Spacing.xs,
+  tag: {
+    height: 26,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
   },
-  name: {
-    color: Colors.text,
-    fontSize: FontSize.xl,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  price: {
-    color: Colors.text,
-    fontSize: FontSize.xxl,
-    fontWeight: '900',
-    marginTop: Spacing.sm,
-  },
+  price: {marginTop: 2},
 });

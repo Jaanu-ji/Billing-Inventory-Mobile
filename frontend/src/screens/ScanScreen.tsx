@@ -1,10 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import {Animated, Pressable, StyleSheet, View} from 'react-native';
 import {
   Camera,
   useCameraDevice,
@@ -18,13 +13,13 @@ import {
   ProductFormModal,
   type ProductFormSubmit,
 } from '../components/ProductFormModal';
-import {PrimaryButton} from '../components/PrimaryButton';
 import {TorchButton} from '../components/TorchButton';
+import {AppText, Badge, Button} from '../components/ui';
 import {scanService} from '../services/ScanService';
 import {ProfileService} from '../services/ProfileService';
 import {productRepository} from '../repositories/ProductRepository';
 import {Config} from '../constants/config';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
 import {formatPrice} from '../utils/format';
 import type {Product} from '../models/Product';
 import type {RootStackParamList} from '../navigation/types';
@@ -90,6 +85,28 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
       }
     };
   }, []);
+
+  // Sweeping laser line, only while actively scanning (no product UI is up).
+  const laser = useRef(new Animated.Value(0)).current;
+  const laserActive =
+    isFocused &&
+    pendingBarcode === null &&
+    knownProduct === null &&
+    editingProduct === null;
+  useEffect(() => {
+    if (!laserActive) {
+      laser.stopAnimation();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(laser, {toValue: 1, duration: 1400, useNativeDriver: true}),
+        Animated.timing(laser, {toValue: 0, duration: 1400, useNativeDriver: true}),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [laserActive, laser]);
 
   const showCard = useCallback((next: NonNullable<CardState>) => {
     setCard(next);
@@ -232,8 +249,13 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
   if (!hasPermission) {
     return (
       <View style={styles.center}>
-        <Text style={styles.message}>Camera permission is needed to scan.</Text>
-        <PrimaryButton label="Grant camera access" onPress={requestPermission} />
+        <AppText variant="h3" center>
+          Camera access needed
+        </AppText>
+        <AppText variant="bodySm" color={DukaanColors.textMuted} center>
+          Barcode scan karne ke liye camera permission chahiye.
+        </AppText>
+        <Button title="Grant camera access" onPress={requestPermission} />
       </View>
     );
   }
@@ -241,10 +263,14 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
   if (device == null) {
     return (
       <View style={styles.center}>
-        <Text style={styles.message}>No camera found on this device.</Text>
+        <AppText variant="bodySm" color={DukaanColors.textMuted} center>
+          No camera found on this device.
+        </AppText>
       </View>
     );
   }
+
+  const laserY = laser.interpolate({inputRange: [0, 1], outputRange: [-72, 72]});
 
   // Camera scans only when focused and no product UI (new / known / edit) is up.
   const scanningActive =
@@ -264,10 +290,24 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
         codeScanner={codeScanner}
       />
 
-      {/* Aiming frame */}
+      {/* Corner-bracket reticle + sweeping laser. */}
       <View pointerEvents="none" style={styles.overlay}>
-        <View style={styles.frame} />
-        <Text style={styles.hint}>Point the camera at a barcode</Text>
+        <View style={styles.reticle}>
+          <View style={[styles.corner, styles.tl]} />
+          <View style={[styles.corner, styles.tr]} />
+          <View style={[styles.corner, styles.bl]} />
+          <View style={[styles.corner, styles.br]} />
+          {laserActive && (
+            <Animated.View
+              style={[styles.laser, {transform: [{translateY: laserY}]}]}
+            />
+          )}
+        </View>
+        <View style={styles.hint}>
+          <AppText variant="bodySm" weight="700" color="#FFFFFF">
+            Point the camera at a barcode
+          </AppText>
+        </View>
       </View>
 
       {/* Flashlight toggle for low light (only if the device has a torch). */}
@@ -287,39 +327,43 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
       ) : null}
 
       {/* Back to the products list (Scan is pushed from the Products tab). */}
-      <TouchableOpacity
-        style={styles.productsBtn}
+      <Pressable
+        style={({pressed}) => [styles.productsBtn, pressed && styles.productsBtnPressed]}
         onPress={() => navigation.goBack()}>
-        <Text style={styles.productsBtnText}>View Products</Text>
-      </TouchableOpacity>
+        <AppText variant="body" weight="800" color={DukaanColors.onPrimary}>
+          View Products
+        </AppText>
+      </Pressable>
 
       {/* Already-in-catalog card: this item exists — view it and Edit (price /
           GST / HSN) instead of creating a duplicate entry. */}
       {knownProduct ? (
         <View style={styles.knownBackdrop}>
           <View style={styles.knownCard}>
-            <Text style={styles.knownTag}>ALREADY IN CATALOG</Text>
-            <Text style={styles.knownName} numberOfLines={2}>
+            <Badge variant="stock" style={styles.knownTag}>
+              ALREADY IN CATALOG
+            </Badge>
+            <AppText variant="h2" center numberOfLines={2}>
               {knownProduct.name}
-            </Text>
-            <Text style={styles.knownPrice}>
+            </AppText>
+            <AppText variant="h1" numeric style={styles.knownPrice}>
               {formatPrice(knownProduct.price)}
-            </Text>
+            </AppText>
             {gstEnabled && knownProduct.gstRate > 0 ? (
-              <Text style={styles.knownMeta}>
+              <AppText variant="bodySm" color={DukaanColors.textMuted}>
                 GST {knownProduct.gstRate}%
                 {knownProduct.hsnCode ? ` · HSN ${knownProduct.hsnCode}` : ''}
-              </Text>
+              </AppText>
             ) : null}
             <View style={styles.knownActions}>
-              <PrimaryButton
-                label="Close"
-                variant="ghost"
+              <Button
+                title="Close"
+                variant="outline"
                 onPress={dismissKnown}
                 style={styles.knownBtn}
               />
-              <PrimaryButton
-                label="✏️  Edit"
+              <Button
+                title="Edit"
                 onPress={startEditKnown}
                 style={styles.knownBtn}
               />
@@ -359,20 +403,18 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
   );
 }
 
+const BRACKET = 32;
+const BORDER = 3;
+
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: '#000'},
+  container: {flex: 1, backgroundColor: '#0B0E13'},
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.lg,
-    backgroundColor: Colors.background,
-    gap: Spacing.md,
-  },
-  message: {
-    color: Colors.text,
-    fontSize: FontSize.md,
-    textAlign: 'center',
+    padding: Space.lg,
+    backgroundColor: DukaanColors.bg,
+    gap: Space.md,
   },
   overlay: {
     position: 'absolute',
@@ -383,94 +425,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  frame: {
+  reticle: {
     width: '70%',
     aspectRatio: 1.4,
-    borderWidth: 3,
-    borderColor: Colors.text,
-    borderRadius: 16,
-    opacity: 0.85,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  corner: {position: 'absolute', width: BRACKET, height: BRACKET, borderColor: '#FFFFFF'},
+  tl: {top: 0, left: 0, borderTopWidth: BORDER, borderLeftWidth: BORDER, borderTopLeftRadius: 14},
+  tr: {top: 0, right: 0, borderTopWidth: BORDER, borderRightWidth: BORDER, borderTopRightRadius: 14},
+  bl: {bottom: 0, left: 0, borderBottomWidth: BORDER, borderLeftWidth: BORDER, borderBottomLeftRadius: 14},
+  br: {bottom: 0, right: 0, borderBottomWidth: BORDER, borderRightWidth: BORDER, borderBottomRightRadius: 14},
+  laser: {
+    width: '84%',
+    height: 2.5,
+    borderRadius: 2,
+    backgroundColor: Palette.orange[400],
+    shadowColor: Palette.orange[400],
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
   },
   hint: {
-    color: Colors.text,
-    fontSize: FontSize.md,
-    marginTop: Spacing.md,
-    backgroundColor: Colors.overlay,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: 8,
+    marginTop: Space.xl,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.sm,
+    borderRadius: 999,
     overflow: 'hidden',
   },
   cardWrap: {
     position: 'absolute',
-    top: Spacing.xl,
-    left: Spacing.lg,
-    right: Spacing.lg,
+    top: Space.xxxl,
+    left: Space.lg,
+    right: Space.lg,
   },
-  torch: {position: 'absolute', bottom: 96, right: Spacing.lg},
+  torch: {position: 'absolute', bottom: 100, right: Space.lg},
   knownBackdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: Colors.overlay,
+    backgroundColor: 'rgba(15,23,42,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.lg,
+    padding: Space.lg,
   },
   knownCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 2,
-    borderColor: Colors.success,
-    padding: Spacing.lg,
+    backgroundColor: DukaanColors.surface,
+    borderRadius: Radii.xl,
+    padding: 24,
     width: '100%',
     alignItems: 'center',
+    gap: Space.sm,
   },
-  knownTag: {
-    color: Colors.success,
-    fontSize: FontSize.sm,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    marginBottom: Spacing.sm,
-  },
-  knownName: {
-    color: Colors.text,
-    fontSize: FontSize.xl,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  knownPrice: {
-    color: Colors.text,
-    fontSize: FontSize.xxl,
-    fontWeight: '900',
-    marginTop: Spacing.xs,
-  },
-  knownMeta: {
-    color: Colors.textMuted,
-    fontSize: FontSize.md,
-    marginTop: Spacing.xs,
-  },
+  knownTag: {marginBottom: Space.xs},
+  knownPrice: {marginTop: -Space.xs},
   knownActions: {
     flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.lg,
+    gap: Space.md,
+    marginTop: Space.md,
     alignSelf: 'stretch',
   },
   knownBtn: {flex: 1},
   productsBtn: {
     position: 'absolute',
-    bottom: Spacing.xl,
+    bottom: Space.xxxl,
     alignSelf: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: 28,
+    backgroundColor: DukaanColors.primary,
+    paddingHorizontal: Space.xxl,
+    paddingVertical: Space.md,
+    borderRadius: 999,
+    shadowColor: DukaanColors.primary,
+    shadowOffset: {width: 0, height: 10},
+    shadowOpacity: 0.32,
+    shadowRadius: 24,
+    elevation: 12,
   },
-  productsBtnText: {
-    color: Colors.text,
-    fontSize: FontSize.md,
-    fontWeight: '800',
-  },
+  productsBtnPressed: {backgroundColor: DukaanColors.primaryPress},
 });

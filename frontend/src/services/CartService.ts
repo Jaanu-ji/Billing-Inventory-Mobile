@@ -48,6 +48,16 @@ export const CartService = {
     return cart.filter(i => i.barcode !== barcode);
   },
 
+  /**
+   * Set a line's unit price (inline price edit in the cart). Negative/invalid
+   * values are clamped to 0. The edited price is a snapshot on the cart line —
+   * it does not touch the saved product in the catalog.
+   */
+  setPrice(cart: CartItem[], barcode: string, price: number): CartItem[] {
+    const safe = Number.isFinite(price) && price >= 0 ? price : 0;
+    return cart.map(i => (i.barcode === barcode ? {...i, price: safe} : i));
+  },
+
   /** Line total for a single item. */
   lineTotal(item: CartItem): number {
     return item.price * item.quantity;

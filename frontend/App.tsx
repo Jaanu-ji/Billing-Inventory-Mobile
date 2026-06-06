@@ -13,7 +13,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {AppNavigator} from './src/navigation/AppNavigator';
 import {initDatabase} from './src/db/database';
 import {ProfileService} from './src/services/ProfileService';
-import {Colors, FontSize, Spacing} from './src/constants/theme';
+import {DukaanColors, Space, Typography} from './src/constants/theme';
 import type {RootStackParamList} from './src/navigation/types';
 
 function App(): React.JSX.Element {
@@ -50,7 +50,7 @@ function App(): React.JSX.Element {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={DukaanColors.primary} />
       </View>
     );
   }
@@ -67,14 +67,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.background,
-    padding: Spacing.lg,
+    backgroundColor: DukaanColors.bg,
+    padding: Space.lg,
   },
-  errorText: {color: Colors.danger, fontSize: FontSize.lg, fontWeight: '800'},
+  errorText: {
+    ...Typography.h2,
+    color: DukaanColors.danger,
+  },
   errorSub: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    marginTop: Spacing.sm,
+    ...Typography.bodySm,
+    color: DukaanColors.textMuted,
+    marginTop: Space.sm,
     textAlign: 'center',
   },
 });

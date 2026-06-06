@@ -1,12 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {
-  Alert,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import {Alert, FlatList, StyleSheet, View} from 'react-native';
 import {useIsFocused} from '@react-navigation/native';
 import {CameraScanner} from '../components/CameraScanner';
 import {CartItemRow} from '../components/CartItemRow';
@@ -15,6 +8,7 @@ import {
   ProductFormModal,
   type ProductFormSubmit,
 } from '../components/ProductFormModal';
+import {AppText, Button} from '../components/ui';
 import {scanService} from '../services/ScanService';
 import {CartService} from '../services/CartService';
 import {ProfileService} from '../services/ProfileService';
@@ -23,7 +17,7 @@ import {billRepository} from '../repositories/BillRepository';
 import type {Bill} from '../models/Bill';
 import {formatPrice} from '../utils/format';
 import {INDIAN_STATES} from '../constants/states';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {DukaanColors, Palette, Space} from '../constants/theme';
 import type {CartItem} from '../models/Bill';
 
 /**
@@ -125,6 +119,17 @@ export function BillingScreen(): React.JSX.Element {
     setCart(c => CartService.changeQuantity(c, barcode, -1));
   const removeItem = (barcode: string) =>
     setCart(c => CartService.removeItem(c, barcode));
+  // Inline price edit on a cart line (snapshot only; catalog product untouched).
+  const updatePrice = (barcode: string, price: number) =>
+    setCart(c => CartService.setPrice(c, barcode, price));
+
+  // Manual (no-barcode) add — full flow with reuse-search arrives in Phase C3.
+  const handleManualAdd = () => {
+    Alert.alert(
+      'Manual add',
+      'Bina barcode wale items add karna Phase C3 mein aa raha hai.',
+    );
+  };
 
   const openCheckout = () => {
     if (cart.length === 0) {
@@ -196,25 +201,45 @@ export function BillingScreen(): React.JSX.Element {
       />
 
       <View style={styles.cartArea}>
-        <Text style={styles.cartHeading}>
-          Cart{count > 0 ? ` · ${count} item${count > 1 ? 's' : ''}` : ''}
-        </Text>
+        <View style={styles.cartHeader}>
+          <AppText variant="overline" color={DukaanColors.textMuted}>
+            CART{count > 0 ? ` · ${count} ITEM${count > 1 ? 'S' : ''}` : ''}
+          </AppText>
+          <Button
+            title="＋ Manual"
+            variant="secondary"
+            size="sm"
+            onPress={handleManualAdd}
+          />
+        </View>
+
         <FlatList
           data={cart}
           keyExtractor={i => i.barcode}
           contentContainerStyle={styles.cartList}
+          keyboardShouldPersistTaps="handled"
           renderItem={({item}) => (
             <CartItemRow
               item={item}
               onIncrement={increment}
               onDecrement={decrement}
               onRemove={removeItem}
+              onPriceChange={updatePrice}
             />
           )}
           ListEmptyComponent={
-            <Text style={styles.emptyHint}>
-              Point the camera at a barcode to add items.
-            </Text>
+            <View style={styles.empty}>
+              <View style={styles.emptyBadge}>
+                <AppText style={styles.emptyGlyph}>⌷</AppText>
+              </View>
+              <AppText variant="h3" center>
+                Scan to start
+              </AppText>
+              <AppText variant="bodySm" color={DukaanColors.textMuted} center>
+                Barcode camera ke saamne laayein — item apne aap cart mein
+                jud jaayega.
+              </AppText>
+            </View>
           }
         />
       </View>
@@ -222,15 +247,20 @@ export function BillingScreen(): React.JSX.Element {
       {/* Sticky total + checkout */}
       <View style={styles.bottomBar}>
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>{formatPrice(total)}</Text>
+          <AppText variant="label" color={DukaanColors.textMuted}>
+            TOTAL
+          </AppText>
+          <AppText variant="h1" numeric>
+            {formatPrice(total)}
+          </AppText>
         </View>
-        <TouchableOpacity
-          style={[styles.checkoutBtn, cart.length === 0 && styles.checkoutDisabled]}
+        <Button
+          title="Done · Checkout"
+          size="lg"
+          block
+          disabled={cart.length === 0}
           onPress={openCheckout}
-          disabled={cart.length === 0}>
-          <Text style={styles.checkoutText}>Done · Checkout</Text>
-        </TouchableOpacity>
+        />
       </View>
 
       <ProductFormModal
@@ -258,44 +288,42 @@ export function BillingScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: Colors.background},
+  container: {flex: 1, backgroundColor: DukaanColors.bg},
   scanner: {height: '34%', width: '100%'},
-  cartArea: {flex: 1, paddingHorizontal: Spacing.md, paddingTop: Spacing.sm},
-  cartHeading: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-    marginBottom: Spacing.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  cartArea: {flex: 1, paddingHorizontal: Space.lg, paddingTop: Space.md},
+  cartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Space.md,
   },
-  cartList: {paddingBottom: Spacing.md, flexGrow: 1},
-  emptyHint: {
-    color: Colors.textMuted,
-    fontSize: FontSize.md,
-    textAlign: 'center',
-    marginTop: Spacing.xl,
+  cartList: {paddingBottom: Space.md, flexGrow: 1},
+  empty: {
+    alignItems: 'center',
+    gap: Space.sm,
+    marginTop: Space.xxxl,
+    paddingHorizontal: Space.lg,
   },
+  emptyBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 999,
+    backgroundColor: Palette.orange[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Space.xs,
+  },
+  emptyGlyph: {fontSize: 30, color: DukaanColors.primary},
   bottomBar: {
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
+    borderTopColor: DukaanColors.hairline,
+    backgroundColor: DukaanColors.surface,
+    padding: Space.lg,
+    gap: Space.md,
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
   },
-  totalLabel: {color: Colors.text, fontSize: FontSize.lg, fontWeight: '700'},
-  totalValue: {color: Colors.success, fontSize: FontSize.xxl, fontWeight: '900'},
-  checkoutBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-  },
-  checkoutDisabled: {opacity: 0.4},
-  checkoutText: {color: Colors.text, fontSize: FontSize.md, fontWeight: '800'},
 });

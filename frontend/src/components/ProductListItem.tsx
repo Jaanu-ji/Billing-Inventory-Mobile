@@ -1,6 +1,7 @@
 import React from 'react';
-import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {StyleSheet, View} from 'react-native';
+import {AppText, Badge, Button, RowThumb} from './ui';
+import {DukaanColors, Space} from '../constants/theme';
 import {formatPrice} from '../utils/format';
 import type {Product} from '../models/Product';
 
@@ -10,63 +11,81 @@ interface Props {
   onDelete: (product: Product) => void;
 }
 
-/** One row in the Products list: name, barcode, price + edit/delete. */
+/** Up-to-2-char initials for the row thumbnail. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const text = parts
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('');
+  return text ? text.toUpperCase() : '#';
+}
+
+/**
+ * One Products-list card (DUKAAN styling): thumb · name + barcode · price,
+ * an optional GST-rate badge, and Edit / Delete actions.
+ */
 export function ProductListItem({
   product,
   onEdit,
   onDelete,
 }: Props): React.JSX.Element {
   return (
-    <View style={styles.row}>
-      <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>
-          {product.name}
-        </Text>
-        <Text style={styles.barcode} numberOfLines={1}>
-          {product.barcode}
-        </Text>
+    <View style={styles.card}>
+      <View style={styles.top}>
+        <RowThumb label={initials(product.name)} />
+        <View style={styles.info}>
+          <AppText style={styles.name} numberOfLines={1}>
+            {product.name}
+          </AppText>
+          <AppText variant="bodySm" color={DukaanColors.textMuted} numberOfLines={1}>
+            {product.barcode}
+          </AppText>
+        </View>
+        <View style={styles.priceCol}>
+          <AppText variant="h3" numeric>
+            {formatPrice(product.price)}
+          </AppText>
+          {product.gstRate > 0 ? (
+            <Badge variant="gst">{`GST ${product.gstRate}%`}</Badge>
+          ) : null}
+        </View>
       </View>
 
-      <Text style={styles.price}>{formatPrice(product.price)}</Text>
-
       <View style={styles.actions}>
-        <TouchableOpacity
+        <Button
+          title="Edit"
+          variant="secondary"
+          size="sm"
+          style={styles.actionBtn}
           onPress={() => onEdit(product)}
-          style={[styles.actionBtn, {backgroundColor: Colors.surfaceAlt}]}>
-          <Text style={styles.actionText}>Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        />
+        <Button
+          title="Delete"
+          variant="danger"
+          size="sm"
+          style={styles.actionBtn}
           onPress={() => onDelete(product)}
-          style={[styles.actionBtn, {backgroundColor: Colors.danger}]}>
-          <Text style={styles.actionText}>Delete</Text>
-        </TouchableOpacity>
+        />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
+  card: {
+    backgroundColor: DukaanColors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: DukaanColors.hairline,
+    padding: 14,
+    marginBottom: Space.md,
+    gap: Space.md,
   },
-  info: {marginBottom: Spacing.xs},
-  name: {color: Colors.text, fontSize: FontSize.md, fontWeight: '700'},
-  barcode: {color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2},
-  price: {
-    color: Colors.success,
-    fontSize: FontSize.lg,
-    fontWeight: '800',
-    marginBottom: Spacing.sm,
-  },
-  actions: {flexDirection: 'row', gap: Spacing.sm},
-  actionBtn: {
-    flex: 1,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-  },
-  actionText: {color: Colors.text, fontWeight: '700', fontSize: FontSize.sm},
+  top: {flexDirection: 'row', alignItems: 'center', gap: Space.md},
+  info: {flex: 1, gap: 2},
+  name: {fontSize: 15.5, fontWeight: '700', color: DukaanColors.ink},
+  priceCol: {alignItems: 'flex-end', gap: 6},
+  actions: {flexDirection: 'row', gap: Space.md},
+  actionBtn: {flex: 1},
 });

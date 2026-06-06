@@ -7,11 +7,17 @@
  */
 import type {NavigatorScreenParams} from '@react-navigation/native';
 
-/** The four bottom tabs. Billing is home/default. */
+/**
+ * Bottom tabs, laid out to match the DUKAAN design (spec §5.11):
+ *   Home · Products · [Bill = center scan FAB] · Bills · Settings
+ * Billing is the raised center FAB and the default tab. Home is a dashboard
+ * (placeholder until Phase C2).
+ */
 export type MainTabParamList = {
-  Billing: undefined; // Phase 2: scan-to-cart billing flow (home)
-  BillHistory: undefined; // Phase 2: list of saved bills
+  Home: undefined; // Phase C2: dashboard (placeholder for now)
   Products: undefined; // Phase 1: product catalog
+  Billing: undefined; // Phase 2: scan-to-cart billing flow (center FAB)
+  BillHistory: undefined; // Phase 2: list of saved bills
   Settings: undefined; // Phase 2 Part 2: view/edit shop profile
   // Phase 3: Inventory: undefined;
 };

@@ -1,6 +1,7 @@
 import React from 'react';
-import {StyleSheet, Text, TouchableOpacity, ViewStyle} from 'react-native';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {StyleSheet, TouchableOpacity, ViewStyle} from 'react-native';
+import {AppText} from './ui';
+import {DukaanColors, Palette} from '../constants/theme';
 
 interface Props {
   /** Whether the torch is currently on. */
@@ -10,9 +11,8 @@ interface Props {
 }
 
 /**
- * Small flash / torch toggle overlaid on a camera surface, so scanning still
- * works in poor light. Shown only when the device actually has a torch.
- * Amber-highlighted while on, dark translucent while off.
+ * Small flash / torch toggle overlaid on the camera (spec: glass HUD button,
+ * gold when on). Shown only when the device actually has a torch.
  */
 export function TorchButton({on, onPress, style}: Props): React.JSX.Element {
   return (
@@ -22,10 +22,13 @@ export function TorchButton({on, onPress, style}: Props): React.JSX.Element {
       accessibilityRole="button"
       accessibilityLabel={on ? 'Turn flash off' : 'Turn flash on'}
       style={[styles.btn, on && styles.btnOn, style]}>
-      <Text style={styles.icon}>🔦</Text>
-      <Text style={[styles.label, on && styles.labelOn]}>
+      <AppText style={styles.icon}>🔦</AppText>
+      <AppText
+        variant="cap"
+        weight="700"
+        color={on ? Palette.slate[900] : '#FFFFFF'}>
         {on ? 'Flash on' : 'Flash'}
-      </Text>
+      </AppText>
     </TouchableOpacity>
   );
 }
@@ -34,19 +37,18 @@ const styles = StyleSheet.create({
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.lg,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    // Glass HUD (real blur added with a native lib later).
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(255,255,255,0.28)',
   },
   btnOn: {
-    backgroundColor: Colors.warning,
-    borderColor: Colors.warning,
+    backgroundColor: DukaanColors.gold,
+    borderColor: DukaanColors.gold,
   },
-  icon: {fontSize: 16},
-  label: {color: Colors.text, fontSize: FontSize.sm, fontWeight: '700'},
-  labelOn: {color: '#000'},
+  icon: {fontSize: 15},
 });

@@ -32,6 +32,46 @@ export interface ShareOutcome {
 }
 
 /**
+ * Derive a simple (cash-memo) view of a GST bill, for sending the customer a
+ * plain non-GST copy. PURE and READ-ONLY — it returns a NEW in-memory Bill and
+ * never touches the saved record, which stays a GST bill.
+ *
+ * No GST is recomputed: each line's already-stored `gstAmount` is folded into a
+ * tax-inclusive unit price, so the simple bill's total equals exactly what the
+ * customer paid (subtotal == total, no tax lines). A non-GST bill is returned
+ * unchanged.
+ */
+export function toSimpleBill(bill: Bill): Bill {
+  if (bill.billType !== 'gst') {
+    return bill;
+  }
+  const items = (bill.items ?? []).map(it => {
+    const inclTotal = it.lineTotal + it.gstAmount;
+    const qty = it.quantity || 1;
+    return {
+      ...it,
+      price: inclTotal / qty, // tax-inclusive unit price
+      lineTotal: inclTotal,
+      gstRate: 0,
+      hsnCode: null,
+      gstAmount: 0,
+    };
+  });
+  return {
+    ...bill,
+    billType: 'simple',
+    customerGstin: null,
+    isInterState: false,
+    cgst: 0,
+    sgst: 0,
+    igst: 0,
+    subtotal: bill.total, // simple bill shows no tax: subtotal == total
+    total: bill.total,
+    items,
+  };
+}
+
+/**
  * Normalise an Indian phone number to WhatsApp's `<country><number>` form (no
  * '+', no spaces). Assumes +91 when no country code is present — the common case
  * for these shops. Returns null if there aren't enough digits to dial.
@@ -102,6 +142,17 @@ class ShareServiceImpl {
       failOnCancel: false,
     });
     return {shared: result?.success ?? false};
+  }
+
+  /**
+   * Share a GST bill as a SIMPLE (non-GST) PDF — same flow as `shareBill`, but
+   * on a read-only simple copy (see `toSimpleBill`). The saved bill stays GST.
+   */
+  async shareBillAsSimple(
+    bill: Bill,
+    profile: ShopProfile | null,
+  ): Promise<ShareOutcome> {
+    return this.shareBill(toSimpleBill(bill), profile);
   }
 
   /**

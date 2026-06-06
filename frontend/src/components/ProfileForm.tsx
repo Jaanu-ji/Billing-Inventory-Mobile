@@ -1,18 +1,11 @@
 import React, {useState} from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {ScrollView, StyleSheet, View} from 'react-native';
+import {DukaanColors, Radii, Space} from '../constants/theme';
 import {SHOP_TYPES} from '../constants/shopTypes';
 import {INDIAN_STATES} from '../constants/states';
 import {validateProfileForm, type ProfileErrors} from '../utils/validation';
 import {SelectField} from './SelectField';
-import {PrimaryButton} from './PrimaryButton';
+import {AppText, Button, Field, Input, Textarea, Toggle} from './ui';
 import type {ShopProfile, ShopProfileInput} from '../models/ShopProfile';
 
 interface Props {
@@ -23,7 +16,7 @@ interface Props {
   onSubmit: (input: ShopProfileInput) => void;
 }
 
-/** Shared shop setup / settings form (one form, two screens). */
+/** Shared shop setup / settings form (one form, two screens). DUKAAN styling. */
 export function ProfileForm({
   initial,
   submitLabel,
@@ -89,65 +82,57 @@ export function ProfileForm({
         error={errors.shopType}
       />
 
-      <Text style={styles.label}>Shop name</Text>
-      <TextInput
-        value={shopName}
-        onChangeText={setShopName}
-        placeholder="e.g. Sharma General Store"
-        placeholderTextColor={Colors.textMuted}
-        style={styles.input}
-      />
-      {errors.shopName ? <Text style={styles.error}>{errors.shopName}</Text> : null}
+      <Field label="Shop name" style={styles.block}>
+        <Input
+          value={shopName}
+          onChangeText={setShopName}
+          placeholder="e.g. Sharma General Store"
+        />
+      </Field>
+      {errors.shopName ? <ErrorText text={errors.shopName} /> : null}
 
-      <Text style={styles.label}>Phone number</Text>
-      <TextInput
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="e.g. 98765 43210"
-        placeholderTextColor={Colors.textMuted}
-        keyboardType="phone-pad"
-        style={styles.input}
-      />
-      {errors.phone ? <Text style={styles.error}>{errors.phone}</Text> : null}
+      <Field label="Phone number" style={styles.block}>
+        <Input
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="e.g. 98765 43210"
+          keyboardType="phone-pad"
+        />
+      </Field>
+      {errors.phone ? <ErrorText text={errors.phone} /> : null}
 
-      <Text style={styles.label}>Address (optional)</Text>
-      <TextInput
-        value={address ?? ''}
-        onChangeText={setAddress}
-        placeholder="Shop address"
-        placeholderTextColor={Colors.textMuted}
-        multiline
-        style={[styles.input, styles.multiline]}
-      />
+      <Field label="Address (optional)" style={styles.block}>
+        <Textarea
+          value={address ?? ''}
+          onChangeText={setAddress}
+          placeholder="Shop address"
+        />
+      </Field>
 
       <View style={styles.gstRow}>
         <View style={styles.gstText}>
-          <Text style={styles.gstTitle}>GST-registered shop?</Text>
-          <Text style={styles.gstHint}>
+          <AppText variant="body" weight="700">
+            GST-registered shop?
+          </AppText>
+          <AppText variant="bodySm" color={DukaanColors.textMuted}>
             Turn on if you bill with GST. You can change this later.
-          </Text>
+          </AppText>
         </View>
-        <Switch
-          value={gstEnabled}
-          onValueChange={setGstEnabled}
-          trackColor={{true: Colors.primary, false: Colors.border}}
-          thumbColor={Colors.text}
-        />
+        <Toggle value={gstEnabled} onValueChange={setGstEnabled} />
       </View>
 
       {gstEnabled ? (
         <View>
-          <Text style={styles.label}>GSTIN</Text>
-          <TextInput
-            value={gstin ?? ''}
-            onChangeText={t => setGstin(t.toUpperCase())}
-            placeholder="15-character GSTIN"
-            placeholderTextColor={Colors.textMuted}
-            autoCapitalize="characters"
-            maxLength={15}
-            style={styles.input}
-          />
-          {errors.gstin ? <Text style={styles.error}>{errors.gstin}</Text> : null}
+          <Field label="GSTIN" style={styles.block}>
+            <Input
+              value={gstin ?? ''}
+              onChangeText={t => setGstin(t.toUpperCase())}
+              placeholder="15-character GSTIN"
+              autoCapitalize="characters"
+              maxLength={15}
+            />
+          </Field>
+          {errors.gstin ? <ErrorText text={errors.gstin} /> : null}
 
           <SelectField
             label="State"
@@ -160,8 +145,10 @@ export function ProfileForm({
         </View>
       ) : null}
 
-      <PrimaryButton
-        label={submitLabel}
+      <Button
+        title={submitLabel}
+        size="lg"
+        block
         onPress={handleSubmit}
         loading={saving}
         style={styles.submit}
@@ -170,36 +157,30 @@ export function ProfileForm({
   );
 }
 
+function ErrorText({text}: {text: string}): React.JSX.Element {
+  return (
+    <AppText variant="cap" color={DukaanColors.danger} style={styles.error}>
+      {text}
+    </AppText>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: Colors.background},
-  content: {padding: Spacing.lg, paddingBottom: Spacing.xl},
-  label: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    marginBottom: Spacing.xs,
-    marginTop: Spacing.sm,
-  },
-  input: {
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    color: Colors.text,
-    fontSize: FontSize.md,
-  },
-  multiline: {minHeight: 64, textAlignVertical: 'top'},
-  error: {color: Colors.danger, fontSize: FontSize.sm, marginTop: Spacing.xs},
+  container: {flex: 1, backgroundColor: DukaanColors.bg},
+  content: {padding: Space.lg, paddingBottom: Space.xxxl, gap: Space.sm},
+  block: {marginTop: Space.sm},
+  error: {marginTop: -Space.xs},
   gstRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginTop: Spacing.lg,
+    backgroundColor: DukaanColors.surface,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: DukaanColors.hairline,
+    padding: Space.lg,
+    marginTop: Space.lg,
   },
-  gstText: {flex: 1, marginRight: Spacing.md},
-  gstTitle: {color: Colors.text, fontSize: FontSize.md, fontWeight: '700'},
-  gstHint: {color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2},
-  submit: {marginTop: Spacing.xl},
+  gstText: {flex: 1, marginRight: Space.md, gap: 2},
+  submit: {marginTop: Space.xl},
 });

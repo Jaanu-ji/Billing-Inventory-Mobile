@@ -1,9 +1,10 @@
 import React, {useState} from 'react';
-import {StyleSheet, Text, View} from 'react-native';
+import {StyleSheet, View} from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {ProfileForm} from '../components/ProfileForm';
+import {AppText} from '../components/ui';
 import {ProfileService} from '../services/ProfileService';
-import {Colors, FontSize, Spacing} from '../constants/theme';
+import {DukaanColors, Space} from '../constants/theme';
 import type {ShopProfileInput} from '../models/ShopProfile';
 import type {RootStackParamList} from '../navigation/types';
 
@@ -29,10 +30,10 @@ export function SetupScreen({navigation}: Props): React.JSX.Element {
   return (
     <View style={styles.container}>
       <View style={styles.intro}>
-        <Text style={styles.title}>Set up your shop</Text>
-        <Text style={styles.subtitle}>
+        <AppText variant="h1">Set up your shop</AppText>
+        <AppText variant="body" color={DukaanColors.textMuted}>
           A few quick details to personalise your bills.
-        </Text>
+        </AppText>
       </View>
       <ProfileForm
         submitLabel="Save & Continue"
@@ -44,12 +45,6 @@ export function SetupScreen({navigation}: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: Colors.background},
-  intro: {paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg},
-  title: {color: Colors.text, fontSize: FontSize.xl, fontWeight: '900'},
-  subtitle: {
-    color: Colors.textMuted,
-    fontSize: FontSize.md,
-    marginTop: Spacing.xs,
-  },
+  container: {flex: 1, backgroundColor: DukaanColors.bg},
+  intro: {paddingHorizontal: Space.lg, paddingTop: Space.lg, gap: Space.xs},
 });

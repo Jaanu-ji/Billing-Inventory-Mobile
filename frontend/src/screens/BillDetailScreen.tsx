@@ -1,21 +1,14 @@
 import React, {useCallback, useState} from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import {ActivityIndicator, Alert, ScrollView, StyleSheet, View} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {billRepository} from '../repositories/BillRepository';
 import {ProfileService} from '../services/ProfileService';
 import {ShareService} from '../services/ShareService';
-import {PrimaryButton} from '../components/PrimaryButton';
+import {AppText, Badge, Button} from '../components/ui';
 import {formatPrice, formatDateTime} from '../utils/format';
 import {shopTypeLabel} from '../constants/shopTypes';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
 import type {Bill} from '../models/Bill';
 import type {ShopProfile} from '../models/ShopProfile';
 import type {RootStackParamList} from '../navigation/types';
@@ -66,6 +59,22 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
     }
   };
 
+  // Send a GST bill to the customer as a plain (non-GST) cash memo. Read-only:
+  // it shares a derived simple copy; the saved bill stays GST (see ShareService).
+  const handleShareSimple = async () => {
+    if (!bill || sharing) {
+      return;
+    }
+    setSharing(true);
+    try {
+      await ShareService.shareBillAsSimple(bill, profile);
+    } catch {
+      Alert.alert('Share failed', 'Could not create or share the PDF. Please try again.');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const handleWhatsApp = async () => {
     if (!bill || sharing) {
       return;
@@ -83,7 +92,7 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={DukaanColors.primary} />
       </View>
     );
   }
@@ -91,7 +100,9 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
   if (!bill) {
     return (
       <View style={styles.center}>
-        <Text style={styles.muted}>Bill not found.</Text>
+        <AppText variant="body" color={DukaanColors.textMuted}>
+          Bill not found.
+        </AppText>
       </View>
     );
   }
@@ -105,110 +116,132 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
       {/* Shop header from the saved profile (Phase 2 Part 2). */}
       {profile ? (
         <View style={styles.shopCard}>
-          <Text style={styles.shopName}>{profile.shopName}</Text>
-          <Text style={styles.shopMeta}>{shopTypeLabel(profile.shopType)}</Text>
+          <AppText variant="h2">{profile.shopName}</AppText>
+          <AppText variant="bodySm" color={DukaanColors.textMuted}>
+            {shopTypeLabel(profile.shopType)}
+          </AppText>
           {profile.phone ? (
-            <Text style={styles.shopMeta}>Ph: {profile.phone}</Text>
+            <AppText variant="bodySm" color={DukaanColors.textMuted}>
+              Ph: {profile.phone}
+            </AppText>
           ) : null}
           {profile.address ? (
-            <Text style={styles.shopMeta}>{profile.address}</Text>
+            <AppText variant="bodySm" color={DukaanColors.textMuted}>
+              {profile.address}
+            </AppText>
           ) : null}
           {profile.gstEnabled && profile.gstin ? (
-            <Text style={styles.shopMeta}>GSTIN: {profile.gstin}</Text>
+            <AppText variant="bodySm" color={DukaanColors.textMuted} numeric>
+              GSTIN: {profile.gstin}
+            </AppText>
           ) : null}
         </View>
       ) : null}
 
       <View style={styles.headerCard}>
         <View style={styles.billNoRow}>
-          <Text style={styles.billNo}>Bill #{bill.billNumber}</Text>
-          {isGst ? (
-            <View style={styles.gstBadge}>
-              <Text style={styles.gstBadgeText}>TAX INVOICE</Text>
-            </View>
-          ) : null}
+          <AppText variant="h1">Bill #{bill.billNumber}</AppText>
+          <Badge variant={isGst ? 'gst' : 'simple'}>
+            {isGst ? 'TAX INVOICE' : 'CASH MEMO'}
+          </Badge>
         </View>
-        <Text style={styles.meta}>{formatDateTime(bill.createdAt)}</Text>
+        <AppText variant="bodySm" color={DukaanColors.textMuted}>
+          {formatDateTime(bill.createdAt)}
+        </AppText>
         {bill.customerName ? (
-          <Text style={styles.meta}>Customer: {bill.customerName}</Text>
+          <AppText variant="bodySm" color={DukaanColors.textMuted}>
+            Customer: {bill.customerName}
+          </AppText>
         ) : null}
         {bill.customerPhone ? (
-          <Text style={styles.meta}>Phone: {bill.customerPhone}</Text>
+          <AppText variant="bodySm" color={DukaanColors.textMuted}>
+            Phone: {bill.customerPhone}
+          </AppText>
         ) : null}
         {isGst && bill.customerGstin ? (
-          <Text style={styles.meta}>Customer GSTIN: {bill.customerGstin}</Text>
+          <AppText variant="bodySm" color={DukaanColors.textMuted} numeric>
+            Customer GSTIN: {bill.customerGstin}
+          </AppText>
         ) : null}
         {isGst && placeOfSupply ? (
-          <Text style={styles.meta}>Place of supply: {placeOfSupply}</Text>
+          <AppText variant="bodySm" color={DukaanColors.textMuted}>
+            Place of supply: {placeOfSupply}
+          </AppText>
         ) : null}
       </View>
 
-      <Text style={styles.sectionTitle}>Items</Text>
+      <AppText variant="overline" color={DukaanColors.textMuted} style={styles.sectionTitle}>
+        ITEMS
+      </AppText>
       {(bill.items ?? []).map(item => (
         <View key={item.id} style={styles.itemRow}>
           <View style={styles.itemInfo}>
-            <Text style={styles.itemName} numberOfLines={1}>
+            <AppText variant="body" weight="700" numberOfLines={1}>
               {item.name}
-            </Text>
-            <Text style={styles.itemUnit}>
+            </AppText>
+            <AppText variant="bodySm" color={DukaanColors.textMuted}>
               {item.quantity} × {formatPrice(item.price)}
               {isGst && item.gstRate > 0 ? ` · GST ${item.gstRate}%` : ''}
               {isGst && item.hsnCode ? ` · HSN ${item.hsnCode}` : ''}
-            </Text>
+            </AppText>
           </View>
-          <Text style={styles.itemTotal}>{formatPrice(item.lineTotal)}</Text>
+          <AppText variant="body" weight="800" numeric>
+            {formatPrice(item.lineTotal)}
+          </AppText>
         </View>
       ))}
 
       <View style={styles.totalsCard}>
-        <View style={styles.totalLine}>
-          <Text style={styles.totalLabel}>
-            {isGst ? 'Taxable value' : 'Subtotal'}
-          </Text>
-          <Text style={styles.totalVal}>{formatPrice(bill.subtotal)}</Text>
-        </View>
+        <TotalLine
+          label={isGst ? 'Taxable value' : 'Subtotal'}
+          value={formatPrice(bill.subtotal)}
+        />
 
         {/* GST breakup: CGST + SGST (intra-state) or IGST (inter-state). */}
         {isGst && !bill.isInterState ? (
           <>
-            <View style={styles.totalLine}>
-              <Text style={styles.totalLabel}>CGST</Text>
-              <Text style={styles.totalVal}>{formatPrice(bill.cgst)}</Text>
-            </View>
-            <View style={styles.totalLine}>
-              <Text style={styles.totalLabel}>SGST</Text>
-              <Text style={styles.totalVal}>{formatPrice(bill.sgst)}</Text>
-            </View>
+            <TotalLine label="CGST" value={formatPrice(bill.cgst)} />
+            <TotalLine label="SGST" value={formatPrice(bill.sgst)} />
           </>
         ) : null}
         {isGst && bill.isInterState ? (
-          <View style={styles.totalLine}>
-            <Text style={styles.totalLabel}>IGST</Text>
-            <Text style={styles.totalVal}>{formatPrice(bill.igst)}</Text>
-          </View>
+          <TotalLine label="IGST" value={formatPrice(bill.igst)} />
         ) : null}
 
-        <View style={[styles.totalLine, styles.grandLine]}>
-          <Text style={styles.grandLabel}>Total</Text>
-          <Text style={styles.grandVal}>{formatPrice(bill.total)}</Text>
+        <View style={styles.grandLine}>
+          <AppText variant="h3">Total</AppText>
+          <AppText variant="h1" numeric color={DukaanColors.teal}>
+            {formatPrice(bill.total)}
+          </AppText>
         </View>
       </View>
 
       {/* Share / PDF — works for any past bill. The PDF renders the same GST
           fields shown above. Sharing is optional; the saved bill is untouched. */}
       <View style={styles.shareActions}>
-        <PrimaryButton
-          label={sharing ? 'Preparing…' : 'Share / PDF'}
+        <Button
+          title={sharing ? 'Preparing…' : 'Share / PDF'}
           onPress={handleShare}
           loading={sharing}
+          block
         />
+        {/* GST bill only: send the customer a plain non-GST copy. */}
+        {isGst ? (
+          <Button
+            title="Share as simple bill"
+            variant="outline"
+            onPress={handleShareSimple}
+            disabled={sharing}
+            block
+          />
+        ) : null}
         {bill.customerPhone ? (
-          <PrimaryButton
-            label={`WhatsApp${bill.customerName ? ' ' + bill.customerName : ''}`}
-            variant="ghost"
+          <Button
+            title={`WhatsApp${bill.customerName ? ' ' + bill.customerName : ''}`}
+            variant="wa"
             onPress={handleWhatsApp}
             disabled={sharing}
-            style={styles.whatsAppBtn}
+            block
           />
         ) : null}
       </View>
@@ -216,87 +249,90 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
   );
 }
 
+/** One label/value line in the totals card. */
+function TotalLine({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): React.JSX.Element {
+  return (
+    <View style={styles.totalLine}>
+      <AppText variant="body" color={DukaanColors.textMuted}>
+        {label}
+      </AppText>
+      <AppText variant="body" weight="700" numeric>
+        {value}
+      </AppText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: Colors.background},
-  content: {padding: Spacing.md},
+  container: {flex: 1, backgroundColor: DukaanColors.bg},
+  content: {padding: Space.lg},
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor: DukaanColors.bg,
   },
-  muted: {color: Colors.textMuted, fontSize: FontSize.md},
   shopCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.primary,
+    backgroundColor: DukaanColors.surface,
+    borderRadius: Radii.lg,
+    padding: Space.lg,
+    marginBottom: Space.md,
+    borderBottomWidth: 3,
+    borderBottomColor: DukaanColors.primary,
+    gap: 2,
   },
-  shopName: {color: Colors.text, fontSize: FontSize.lg, fontWeight: '900'},
-  shopMeta: {color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2},
   headerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
+    backgroundColor: DukaanColors.surface,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: DukaanColors.hairline,
+    padding: Space.lg,
+    marginBottom: Space.md,
+    gap: 4,
   },
   billNoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 2,
   },
-  billNo: {color: Colors.text, fontSize: FontSize.xl, fontWeight: '900'},
-  gstBadge: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-  },
-  gstBadgeText: {color: Colors.text, fontSize: FontSize.sm, fontWeight: '800'},
-  meta: {color: Colors.textMuted, fontSize: FontSize.sm, marginTop: Spacing.xs},
-  sectionTitle: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: Spacing.sm,
-  },
+  sectionTitle: {marginBottom: Space.sm},
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.sm,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
+    backgroundColor: DukaanColors.surface,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: DukaanColors.hairline,
+    padding: Space.lg,
+    marginBottom: Space.sm,
   },
-  itemInfo: {flex: 1, marginRight: Spacing.sm},
-  itemName: {color: Colors.text, fontSize: FontSize.md, fontWeight: '700'},
-  itemUnit: {color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2},
-  itemTotal: {color: Colors.text, fontSize: FontSize.md, fontWeight: '800'},
+  itemInfo: {flex: 1, marginRight: Space.sm, gap: 2},
   totalsCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginTop: Spacing.sm,
+    backgroundColor: Palette.slate[50],
+    borderRadius: Radii.lg,
+    padding: Space.lg,
+    marginTop: Space.sm,
   },
   totalLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.xs,
+    paddingVertical: Space.xs,
   },
-  totalLabel: {color: Colors.textMuted, fontSize: FontSize.md},
-  totalVal: {color: Colors.text, fontSize: FontSize.md, fontWeight: '700'},
   grandLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    marginTop: Spacing.xs,
-    paddingTop: Spacing.sm,
+    borderTopColor: DukaanColors.hairline,
+    marginTop: Space.xs,
+    paddingTop: Space.sm,
   },
-  grandLabel: {color: Colors.text, fontSize: FontSize.lg, fontWeight: '800'},
-  grandVal: {color: Colors.success, fontSize: FontSize.xl, fontWeight: '900'},
-  shareActions: {marginTop: Spacing.lg, gap: Spacing.sm},
-  whatsAppBtn: {borderColor: Colors.success},
+  shareActions: {marginTop: Space.lg, gap: Space.md},
 });

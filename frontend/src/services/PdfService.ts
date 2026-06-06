@@ -158,32 +158,48 @@ export function buildBillHtml(bill: Bill, profile: ShopProfile | null): string {
     : '';
   const docTitle = isGst ? 'TAX INVOICE' : 'INVOICE';
 
+  // Indigo badge for a GST tax invoice, neutral slate for a simple invoice.
+  const badgeClass = isGst ? 'badge gst' : 'badge';
+
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <style>
   * { box-sizing: border-box; }
-  body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 12px; margin: 0; padding: 24px; }
-  .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #222; padding-bottom: 12px; }
-  .shop-name { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
-  .shop-meta { color: #555; line-height: 1.5; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #0F172A; font-size: 12px; margin: 0; padding: 28px;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .top { display: flex; justify-content: space-between; align-items: flex-start;
+         border-bottom: 3px solid #EA580C; padding-bottom: 14px; }
+  .shop-name { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin: 0 0 4px; color: #0F172A; }
+  .shop-meta { color: #64748B; line-height: 1.55; }
   .doc-type { text-align: right; }
-  .doc-type .badge { display: inline-block; border: 1.5px solid #222; border-radius: 4px; padding: 4px 10px; font-weight: 800; letter-spacing: 1px; }
-  .doc-type .meta { color: #555; margin-top: 8px; line-height: 1.6; }
-  .meta strong { color: #1a1a1a; }
-  .parties { display: flex; justify-content: space-between; margin: 18px 0; }
-  .party { line-height: 1.5; }
-  .party-label { text-transform: uppercase; font-size: 10px; letter-spacing: 1px; color: #888; margin-bottom: 4px; }
-  table.items { width: 100%; border-collapse: collapse; margin-top: 6px; }
-  table.items th { background: #f0f2f5; text-align: left; padding: 8px; border-bottom: 1.5px solid #ccc; font-size: 11px; }
-  table.items td { padding: 8px; border-bottom: 1px solid #eee; }
+  .badge { display: inline-block; border-radius: 999px; padding: 5px 14px;
+           font-weight: 800; letter-spacing: 1px; font-size: 11px;
+           background: #F1F5F9; color: #475569; }
+  .badge.gst { background: #EEF2FF; color: #4F46E5; }
+  .doc-meta { color: #64748B; margin-top: 10px; line-height: 1.7; }
+  .doc-meta strong { color: #0F172A; }
+  .parties { display: flex; justify-content: space-between; margin: 20px 0 6px; }
+  .party { line-height: 1.55; }
+  .party-label { text-transform: uppercase; font-size: 10px; letter-spacing: 1.5px;
+                 color: #94A3B8; margin-bottom: 4px; font-weight: 700; }
+  table.items { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table.items th { background: #F8FAFC; text-align: left; padding: 10px 8px;
+                   border-bottom: 2px solid #E2E8F0; font-size: 10px;
+                   text-transform: uppercase; letter-spacing: 0.6px; color: #64748B; }
+  table.items td { padding: 10px 8px; border-bottom: 1px solid #EAEEF3; }
   .c { text-align: center; }
   .r { text-align: right; }
-  .tlabel { color: #555; border-bottom: none; }
-  tr.grand td { border-top: 2px solid #222; font-size: 15px; font-weight: 800; padding-top: 10px; }
-  .decl { margin-top: 18px; color: #555; font-size: 11px; line-height: 1.5; border-top: 1px dashed #ccc; padding-top: 10px; }
-  .thanks { margin-top: 14px; text-align: center; color: #777; font-style: italic; }
+  .tlabel { color: #64748B; border-bottom: none; font-weight: 600; }
+  tr.grand td { border-top: 2px solid #0F172A; font-size: 16px; font-weight: 800; padding-top: 12px; }
+  tr.grand td:last-child { color: #0D9488; }
+  .decl { margin-top: 20px; color: #64748B; font-size: 10.5px; line-height: 1.6;
+          border-top: 1px dashed #CBD5E1; padding-top: 12px; }
+  .thanks { margin-top: 16px; text-align: center; color: #94A3B8; font-style: italic; }
 </style>
 </head>
 <body>
@@ -193,8 +209,8 @@ export function buildBillHtml(bill: Bill, profile: ShopProfile | null): string {
       <div class="shop-meta">${shopLines.map(l => `<div>${l}</div>`).join('')}</div>
     </div>
     <div class="doc-type">
-      <span class="badge">${docTitle}</span>
-      <div class="meta">
+      <span class="${badgeClass}">${docTitle}</span>
+      <div class="doc-meta">
         <div>Bill <strong>#${bill.billNumber}</strong></div>
         <div>${esc(formatDateTime(bill.createdAt))}</div>
       </div>

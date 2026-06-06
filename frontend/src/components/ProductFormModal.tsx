@@ -3,16 +3,14 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from 'react-native';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
 import {GST_RATE_OPTIONS} from '../constants/gst';
 import {validateProductForm} from '../utils/validation';
-import {PrimaryButton} from './PrimaryButton';
-import {SelectField} from './SelectField';
+import {AppText, Button, Chip, Field, Input} from './ui';
 
 export interface ProductFormSubmit {
   name: string;
@@ -39,9 +37,11 @@ interface Props {
 }
 
 /**
- * Shared form modal for creating AND editing a product.
+ * Shared form modal for creating AND editing a product (DUKAAN styling).
  * Validates name (required) and price (numeric, >= 0) before submitting.
- * For a GST shop it also captures the product's GST rate and optional HSN code.
+ * For a GST shop it also captures the product's GST rate (chips) and optional
+ * HSN code. B4 changed presentation only — validation + the `ProductFormSubmit`
+ * payload are unchanged.
  */
 export function ProductFormModal({
   visible,
@@ -104,81 +104,108 @@ export function ProductFormModal({
       visible={visible}
       transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={onCancel}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <AppText variant="h2" style={styles.title}>
+              {title}
+            </AppText>
 
-          {barcode ? (
-            <View style={styles.barcodeBox}>
-              <Text style={styles.barcodeLabel}>Barcode</Text>
-              <Text style={styles.barcodeValue}>{barcode}</Text>
+            {barcode ? (
+              <View style={styles.barcodeBox}>
+                <AppText variant="cap" color={DukaanColors.textMuted}>
+                  BARCODE
+                </AppText>
+                <AppText variant="body" weight="700" numeric>
+                  {barcode}
+                </AppText>
+              </View>
+            ) : null}
+
+            <Field label="Product name" style={styles.block}>
+              <Input
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Parle-G Biscuit"
+                autoFocus
+              />
+            </Field>
+            {errors.name ? (
+              <AppText variant="cap" color={DukaanColors.danger} style={styles.error}>
+                {errors.name}
+              </AppText>
+            ) : null}
+
+            <Field label="Price" style={styles.block}>
+              <Input
+                value={priceText}
+                onChangeText={setPriceText}
+                placeholder="e.g. 10"
+                keyboardType="decimal-pad"
+                prefix="₹"
+              />
+            </Field>
+            {errors.price ? (
+              <AppText variant="cap" color={DukaanColors.danger} style={styles.error}>
+                {errors.price}
+              </AppText>
+            ) : null}
+
+            {/* GST fields only for a GST-registered shop — keeps the common
+                non-GST flow to just name + price. */}
+            {showGst ? (
+              <>
+                <Field label="GST rate" style={styles.block}>
+                  <View style={styles.chips}>
+                    {GST_RATE_OPTIONS.map(o => (
+                      <Chip
+                        key={o.value}
+                        label={o.label}
+                        variant="primary"
+                        active={String(gstRate) === o.value}
+                        onPress={() => setGstRate(Number(o.value))}
+                      />
+                    ))}
+                  </View>
+                </Field>
+                {errors.gstRate ? (
+                  <AppText
+                    variant="cap"
+                    color={DukaanColors.danger}
+                    style={styles.error}>
+                    {errors.gstRate}
+                  </AppText>
+                ) : null}
+
+                <Field label="HSN code (optional)" style={styles.block}>
+                  <Input
+                    value={hsnCode}
+                    onChangeText={setHsnCode}
+                    placeholder="e.g. 1905"
+                  />
+                </Field>
+              </>
+            ) : null}
+
+            <View style={styles.actions}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={onCancel}
+                style={styles.actionBtn}
+              />
+              <Button
+                title={submitLabel}
+                onPress={handleSave}
+                loading={saving}
+                style={styles.actionBtn}
+              />
             </View>
-          ) : null}
-
-          <Text style={styles.fieldLabel}>Product name</Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g. Parle-G Biscuit"
-            placeholderTextColor={Colors.textMuted}
-            style={styles.input}
-            autoFocus
-          />
-          {errors.name ? <Text style={styles.error}>{errors.name}</Text> : null}
-
-          <Text style={styles.fieldLabel}>Price ({/* ₹ */ '₹'})</Text>
-          <TextInput
-            value={priceText}
-            onChangeText={setPriceText}
-            placeholder="e.g. 10"
-            placeholderTextColor={Colors.textMuted}
-            keyboardType="decimal-pad"
-            style={styles.input}
-          />
-          {errors.price ? (
-            <Text style={styles.error}>{errors.price}</Text>
-          ) : null}
-
-          {/* GST fields only for a GST-registered shop — keeps the common
-              non-GST flow to just name + price. */}
-          {showGst ? (
-            <>
-              <SelectField
-                label="GST rate"
-                value={String(gstRate)}
-                options={GST_RATE_OPTIONS}
-                onSelect={v => setGstRate(Number(v))}
-                error={errors.gstRate}
-              />
-
-              <Text style={styles.fieldLabel}>HSN code (optional)</Text>
-              <TextInput
-                value={hsnCode}
-                onChangeText={setHsnCode}
-                placeholder="e.g. 1905"
-                placeholderTextColor={Colors.textMuted}
-                style={styles.input}
-              />
-            </>
-          ) : null}
-
-          <View style={styles.actions}>
-            <PrimaryButton
-              label="Cancel"
-              variant="ghost"
-              onPress={onCancel}
-              style={styles.actionBtn}
-            />
-            <PrimaryButton
-              label={submitLabel}
-              onPress={handleSave}
-              loading={saving}
-              style={styles.actionBtn}
-            />
-          </View>
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -188,56 +215,28 @@ export function ProductFormModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: Colors.overlay,
+    backgroundColor: 'rgba(15,23,42,0.45)',
     justifyContent: 'center',
-    padding: Spacing.lg,
+    padding: Space.lg,
   },
   card: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.lg,
+    backgroundColor: DukaanColors.surface,
+    borderRadius: Radii.xl,
+    padding: 24,
+    maxHeight: '88%',
   },
-  title: {
-    color: Colors.text,
-    fontSize: FontSize.lg,
-    fontWeight: '800',
-    marginBottom: Spacing.md,
-  },
+  title: {marginBottom: Space.md},
   barcodeBox: {
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.sm,
-    padding: Spacing.sm,
-    marginBottom: Spacing.md,
+    backgroundColor: Palette.slate[50],
+    borderRadius: Radii.xs,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+    marginBottom: Space.md,
+    gap: 2,
   },
-  barcodeLabel: {color: Colors.textMuted, fontSize: FontSize.sm},
-  barcodeValue: {
-    color: Colors.text,
-    fontSize: FontSize.md,
-    fontWeight: '700',
-  },
-  fieldLabel: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    marginBottom: Spacing.xs,
-    marginTop: Spacing.sm,
-  },
-  input: {
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    color: Colors.text,
-    fontSize: FontSize.md,
-  },
-  error: {
-    color: Colors.danger,
-    fontSize: FontSize.sm,
-    marginTop: Spacing.xs,
-  },
-  actions: {
-    flexDirection: 'row',
-    marginTop: Spacing.lg,
-    gap: Spacing.md,
-  },
+  block: {marginBottom: Space.md},
+  chips: {flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm},
+  error: {marginTop: -Space.sm, marginBottom: Space.md},
+  actions: {flexDirection: 'row', marginTop: Space.sm, gap: Space.md},
   actionBtn: {flex: 1},
 });

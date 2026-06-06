@@ -3,20 +3,27 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import {Colors, FontSize, Radius, Spacing} from '../constants/theme';
+import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
 import {INDIAN_STATES} from '../constants/states';
 import {type BillType} from '../constants/gst';
 import {calculateBillTotals} from '../services/GstService';
 import {formatPrice} from '../utils/format';
-import {PrimaryButton} from './PrimaryButton';
-import {SelectField} from './SelectField';
+import {
+  AppText,
+  Badge,
+  Button,
+  Field,
+  Input,
+  Row,
+  Segmented,
+  Select,
+  BottomSheet,
+} from './ui';
 import type {CartItem} from '../models/Bill';
 
 export interface CheckoutDetails {
@@ -49,11 +56,14 @@ const stateOptions = INDIAN_STATES.map(s => ({
 }));
 
 /**
- * Checkout confirmation. For a non-GST shop this is the original simple flow
- * (optional customer name + phone). For a GST shop it adds:
+ * Checkout confirmation (DUKAAN bottom-sheet styling). For a non-GST shop this
+ * is the simple flow (optional customer name + phone). For a GST shop it adds:
  *   - a GST bill / Simple bill choice (per sale),
- *   - optional customer GSTIN + state for a GST bill,
+ *   - optional customer GSTIN + place of supply for a GST bill,
  *   - a live tax preview (CGST/SGST intra-state, IGST inter-state).
+ *
+ * Only presentation changed in B3 — the state, totals math and the
+ * `CheckoutDetails` produced by `onConfirm` are unchanged.
  */
 export function CheckoutModal({
   visible,
@@ -74,6 +84,7 @@ export function CheckoutModal({
   const [customerStateCode, setCustomerStateCode] = useState<string | null>(
     null,
   );
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -82,6 +93,7 @@ export function CheckoutModal({
       setBillType(gstEnabled ? 'gst' : 'simple');
       setCustomerGstin('');
       setCustomerStateCode(null);
+      setPickerOpen(false);
     }
   }, [visible, gstEnabled]);
 
@@ -92,6 +104,11 @@ export function CheckoutModal({
       calculateBillTotals(items, shopStateCode, customerStateCode, isGstBill),
     [items, shopStateCode, customerStateCode, isGstBill],
   );
+
+  const selectedStateLabel =
+    customerStateCode != null
+      ? stateOptions.find(o => o.value === customerStateCode)?.label ?? null
+      : null;
 
   const handleConfirm = () => {
     onConfirm({
@@ -104,241 +121,301 @@ export function CheckoutModal({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}>
-        <View style={styles.card}>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            <Text style={styles.title}>Checkout</Text>
+    <>
+      <Modal
+        visible={visible}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={onCancel}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.flex}>
+          <Pressable style={styles.scrim} onPress={onCancel}>
+            {/* Stop touches inside the sheet from closing it. */}
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <View style={styles.handle} />
+              <ScrollView keyboardShouldPersistTaps="handled">
+                <View style={styles.titleRow}>
+                  <AppText variant="h2">Checkout</AppText>
+                  {gstEnabled ? (
+                    <Badge variant={isGstBill ? 'gst' : 'simple'}>
+                      {isGstBill ? 'GST' : 'Simple'}
+                    </Badge>
+                  ) : null}
+                </View>
 
-            {/* Bill type choice — only for a GST-registered shop. */}
-            {gstEnabled ? (
-              <View style={styles.segment}>
-                <TouchableOpacity
-                  style={[
-                    styles.segmentBtn,
-                    billType === 'gst' && styles.segmentActive,
-                  ]}
-                  onPress={() => setBillType('gst')}>
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      billType === 'gst' && styles.segmentTextActive,
-                    ]}>
-                    GST bill
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.segmentBtn,
-                    billType === 'simple' && styles.segmentActive,
-                  ]}
-                  onPress={() => setBillType('simple')}>
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      billType === 'simple' && styles.segmentTextActive,
-                    ]}>
-                    Simple bill
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
+                {/* Bill type choice — only for a GST-registered shop. */}
+                {gstEnabled ? (
+                  <Segmented<BillType>
+                    style={styles.block}
+                    value={billType}
+                    onChange={setBillType}
+                    options={[
+                      {label: 'GST bill', value: 'gst'},
+                      {label: 'Simple bill', value: 'simple'},
+                    ]}
+                  />
+                ) : null}
 
-            {/* Totals / GST preview. */}
-            <View style={styles.totalBox}>
-              {isGstBill ? (
-                <>
-                  <View style={styles.previewLine}>
-                    <Text style={styles.previewLabel}>Taxable value</Text>
-                    <Text style={styles.previewVal}>
-                      {formatPrice(totals.subtotal)}
-                    </Text>
-                  </View>
-                  {totals.isInterState ? (
-                    <View style={styles.previewLine}>
-                      <Text style={styles.previewLabel}>IGST</Text>
-                      <Text style={styles.previewVal}>
-                        {formatPrice(totals.igst)}
-                      </Text>
-                    </View>
-                  ) : (
+                {/* Totals / GST preview. */}
+                <View
+                  style={[
+                    styles.totalBox,
+                    isGstBill ? styles.totalBoxGst : styles.totalBoxSimple,
+                  ]}>
+                  {isGstBill ? (
                     <>
-                      <View style={styles.previewLine}>
-                        <Text style={styles.previewLabel}>CGST</Text>
-                        <Text style={styles.previewVal}>
-                          {formatPrice(totals.cgst)}
-                        </Text>
-                      </View>
-                      <View style={styles.previewLine}>
-                        <Text style={styles.previewLabel}>SGST</Text>
-                        <Text style={styles.previewVal}>
-                          {formatPrice(totals.sgst)}
-                        </Text>
+                      <PreviewLine
+                        label="Taxable value"
+                        value={formatPrice(totals.subtotal)}
+                      />
+                      {totals.isInterState ? (
+                        <PreviewLine
+                          label="IGST"
+                          value={formatPrice(totals.igst)}
+                        />
+                      ) : (
+                        <>
+                          <PreviewLine
+                            label="CGST"
+                            value={formatPrice(totals.cgst)}
+                          />
+                          <PreviewLine
+                            label="SGST"
+                            value={formatPrice(totals.sgst)}
+                          />
+                        </>
+                      )}
+                      <View style={styles.grandLine}>
+                        <AppText variant="body" color={DukaanColors.textMuted}>
+                          Total payable
+                        </AppText>
+                        <AppText variant="h2" numeric>
+                          {formatPrice(totals.total)}
+                        </AppText>
                       </View>
                     </>
+                  ) : (
+                    <View style={styles.previewLine}>
+                      <AppText variant="body" color={DukaanColors.textMuted}>
+                        Total payable
+                      </AppText>
+                      <AppText variant="h2" numeric>
+                        {formatPrice(totals.total)}
+                      </AppText>
+                    </View>
                   )}
-                  <View style={[styles.previewLine, styles.grandPreview]}>
-                    <Text style={styles.totalLabel}>Total payable</Text>
-                    <Text style={styles.totalValue}>
-                      {formatPrice(totals.total)}
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <View style={styles.previewLine}>
-                  <Text style={styles.totalLabel}>Total payable</Text>
-                  <Text style={styles.totalValue}>
-                    {formatPrice(totals.total)}
-                  </Text>
                 </View>
-              )}
-            </View>
 
-            <Text style={styles.fieldLabel}>Customer name (optional)</Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Ramesh"
-              placeholderTextColor={Colors.textMuted}
-              style={styles.input}
-            />
+                <Field label="Customer name (optional)" style={styles.block}>
+                  <Input
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="e.g. Ramesh"
+                  />
+                </Field>
 
-            <Text style={styles.fieldLabel}>Phone (optional)</Text>
-            <TextInput
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="e.g. 98765 43210"
-              placeholderTextColor={Colors.textMuted}
-              keyboardType="phone-pad"
-              style={styles.input}
-            />
+                <Field label="Phone (optional)" style={styles.block}>
+                  <Input
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder="e.g. 98765 43210"
+                    keyboardType="phone-pad"
+                  />
+                </Field>
 
-            {/* GST-only customer fields. Both optional: leave blank for a B2C
-                intra-state sale (place of supply defaults to the shop's state). */}
-            {isGstBill ? (
-              <>
-                <Text style={styles.fieldLabel}>
-                  Customer GSTIN (optional)
-                </Text>
-                <TextInput
-                  value={customerGstin}
-                  onChangeText={t => setCustomerGstin(t.toUpperCase())}
-                  placeholder="15-character GSTIN"
-                  placeholderTextColor={Colors.textMuted}
-                  autoCapitalize="characters"
-                  maxLength={15}
-                  style={styles.input}
-                />
+                {/* GST-only customer fields. Both optional: leave blank for a
+                    B2C intra-state sale (place of supply = shop's state). */}
+                {isGstBill ? (
+                  <>
+                    <Field label="Customer GSTIN (optional)" style={styles.block}>
+                      <Input
+                        value={customerGstin}
+                        onChangeText={t => setCustomerGstin(t.toUpperCase())}
+                        placeholder="15-character GSTIN"
+                        autoCapitalize="characters"
+                        maxLength={15}
+                      />
+                    </Field>
 
-                <SelectField
-                  label="Place of supply (optional)"
-                  placeholder="Same as shop state"
-                  value={customerStateCode}
-                  options={stateOptions}
-                  onSelect={setCustomerStateCode}
-                />
-              </>
-            ) : null}
+                    <Field label="Place of supply (optional)" style={styles.block}>
+                      <Select
+                        value={selectedStateLabel}
+                        placeholder="Same as shop state"
+                        onPress={() => setPickerOpen(true)}
+                      />
+                    </Field>
+                  </>
+                ) : null}
 
-            <View style={styles.actions}>
-              <PrimaryButton
-                label="Back"
-                variant="ghost"
-                onPress={onCancel}
-                style={styles.actionBtn}
-              />
-              <PrimaryButton
-                label="Save bill"
-                onPress={handleConfirm}
-                loading={saving}
-                style={styles.actionBtn}
-              />
-            </View>
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+                <View style={styles.actions}>
+                  <Button
+                    title="Back"
+                    variant="outline"
+                    onPress={onCancel}
+                    style={styles.actionBtn}
+                  />
+                  <Button
+                    title="Save bill"
+                    onPress={handleConfirm}
+                    loading={saving}
+                    style={styles.actionBtn}
+                  />
+                </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <StatePicker
+        visible={pickerOpen}
+        selected={customerStateCode}
+        onSelect={code => {
+          setCustomerStateCode(code);
+          setPickerOpen(false);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
+    </>
+  );
+}
+
+/** One label/value line in the GST preview. */
+function PreviewLine({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): React.JSX.Element {
+  return (
+    <View style={styles.previewLine}>
+      <AppText variant="bodySm" color={DukaanColors.textMuted}>
+        {label}
+      </AppText>
+      <AppText variant="bodySm" weight="700" numeric>
+        {value}
+      </AppText>
+    </View>
+  );
+}
+
+/** Bottom-sheet list to pick the place of supply (or "same as shop state"). */
+function StatePicker({
+  visible,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  selected: string | null;
+  onSelect: (code: string | null) => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q
+      ? stateOptions.filter(o => o.label.toLowerCase().includes(q))
+      : stateOptions;
+  }, [query]);
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose}>
+      <AppText variant="h3" style={styles.block}>
+        Place of supply
+      </AppText>
+      <Input
+        placeholder="Search state"
+        value={query}
+        onChangeText={setQuery}
+        containerStyle={styles.block}
+      />
+      <ScrollView style={styles.pickerList} keyboardShouldPersistTaps="handled">
+        <Row
+          title="Same as shop state"
+          onPress={() => onSelect(null)}
+          right={selected == null ? <Tick /> : undefined}
+          divider
+        />
+        {filtered.map(o => (
+          <Row
+            key={o.value}
+            title={o.label}
+            onPress={() => onSelect(o.value)}
+            right={selected === o.value ? <Tick /> : undefined}
+            divider
+          />
+        ))}
+      </ScrollView>
+    </BottomSheet>
+  );
+}
+
+function Tick(): React.JSX.Element {
+  return (
+    <AppText weight="800" color={DukaanColors.primary}>
+      ✓
+    </AppText>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  flex: {flex: 1},
+  scrim: {
     flex: 1,
-    backgroundColor: Colors.overlay,
-    justifyContent: 'center',
-    padding: Spacing.lg,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
   },
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    padding: Spacing.lg,
-    maxHeight: '88%',
+  sheet: {
+    backgroundColor: DukaanColors.surface,
+    borderTopLeftRadius: Radii.xxl,
+    borderTopRightRadius: Radii.xxl,
+    paddingTop: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 26,
+    maxHeight: '90%',
   },
-  title: {
-    color: Colors.text,
-    fontSize: FontSize.lg,
-    fontWeight: '800',
-    marginBottom: Spacing.md,
+  handle: {
+    width: 40,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: Palette.slate[200],
+    alignSelf: 'center',
+    marginBottom: 14,
   },
-  segment: {
+  titleRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.md,
-    padding: Spacing.xs,
-    marginBottom: Spacing.md,
-    gap: Spacing.xs,
-  },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.sm,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Space.md,
   },
-  segmentActive: {backgroundColor: Colors.primary},
-  segmentText: {color: Colors.textMuted, fontSize: FontSize.md, fontWeight: '700'},
-  segmentTextActive: {color: Colors.text},
+  block: {marginBottom: Space.md},
   totalBox: {
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
+    borderRadius: Radii.md,
+    padding: Space.lg,
+    marginBottom: Space.md,
   },
+  totalBoxGst: {backgroundColor: Palette.indigo[50]},
+  totalBoxSimple: {backgroundColor: Palette.slate[50]},
   previewLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Spacing.xs,
+    paddingVertical: Space.xs,
   },
-  previewLabel: {color: Colors.textMuted, fontSize: FontSize.sm},
-  previewVal: {color: Colors.text, fontSize: FontSize.sm, fontWeight: '700'},
-  grandPreview: {
+  grandLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    marginTop: Spacing.xs,
-    paddingTop: Spacing.sm,
+    borderTopColor: DukaanColors.hairline,
+    marginTop: Space.xs,
+    paddingTop: Space.sm,
   },
-  totalLabel: {color: Colors.textMuted, fontSize: FontSize.md},
-  totalValue: {color: Colors.success, fontSize: FontSize.xl, fontWeight: '900'},
-  fieldLabel: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    marginBottom: Spacing.xs,
-    marginTop: Spacing.sm,
-  },
-  input: {
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    color: Colors.text,
-    fontSize: FontSize.md,
-  },
-  actions: {flexDirection: 'row', marginTop: Spacing.lg, gap: Spacing.md},
+  actions: {flexDirection: 'row', marginTop: Space.sm, gap: Space.md},
   actionBtn: {flex: 1},
+  pickerList: {maxHeight: 360},
 });

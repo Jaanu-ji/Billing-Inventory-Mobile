@@ -4,7 +4,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import type {BottomTabScreenProps} from '@react-navigation/bottom-tabs';
 import {ProfileForm} from '../components/ProfileForm';
 import {ProfileService} from '../services/ProfileService';
-import {Colors} from '../constants/theme';
+import {DukaanColors} from '../constants/theme';
 import type {ShopProfile, ShopProfileInput} from '../models/ShopProfile';
 import type {MainTabParamList} from '../navigation/types';
 
@@ -44,7 +44,7 @@ export function SettingsScreen({navigation}: Props): React.JSX.Element {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={DukaanColors.primary} />
       </View>
     );
   }
@@ -64,6 +64,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor: DukaanColors.bg,
   },
 });

@@ -4,7 +4,7 @@
  * inter-state IGST), plus phone-number normalisation for WhatsApp.
  */
 import {buildBillHtml} from '../src/services/PdfService';
-import {toWhatsAppNumber} from '../src/services/ShareService';
+import {toWhatsAppNumber, toSimpleBill} from '../src/services/ShareService';
 import type {Bill, BillItem} from '../src/models/Bill';
 import type {ShopProfile} from '../src/models/ShopProfile';
 
@@ -152,6 +152,51 @@ describe('buildBillHtml — escaping & no-profile', () => {
     const html = buildBillHtml(baseBill(), null);
     expect(html).toContain('#42');
     expect(html).toContain('Invoice'); // generic header
+  });
+});
+
+describe('toSimpleBill — read-only GST→simple transform', () => {
+  const gstBill = baseBill({
+    billType: 'gst',
+    isInterState: false,
+    subtotal: 100,
+    cgst: 9,
+    sgst: 9,
+    total: 118,
+    items: [
+      item({name: 'Cooking Oil', price: 100, quantity: 1, lineTotal: 100, gstRate: 18, hsnCode: '1507', gstAmount: 18}),
+    ],
+  });
+
+  it('does not mutate the original GST bill', () => {
+    const before = JSON.stringify(gstBill);
+    toSimpleBill(gstBill);
+    expect(JSON.stringify(gstBill)).toBe(before);
+  });
+
+  it('produces a simple bill whose total still equals what the customer paid', () => {
+    const simple = toSimpleBill(gstBill);
+    expect(simple.billType).toBe('simple');
+    expect(simple.total).toBe(118);
+    expect(simple.subtotal).toBe(118); // no tax shown: subtotal == total
+    expect(simple.cgst).toBe(0);
+    expect(simple.sgst).toBe(0);
+    expect(simple.igst).toBe(0);
+    // Line price is now tax-inclusive (118 paid for the single unit).
+    expect(simple.items?.[0].lineTotal).toBe(118);
+    expect(simple.items?.[0].gstRate).toBe(0);
+  });
+
+  it('renders as a plain INVOICE (no TAX INVOICE / GST sections)', () => {
+    const html = buildBillHtml(toSimpleBill(gstBill), profile);
+    expect(html).not.toContain('TAX INVOICE');
+    expect(html).not.toContain('CGST');
+    expect(html).toContain('Subtotal');
+  });
+
+  it('returns a non-GST bill unchanged', () => {
+    const simple = baseBill();
+    expect(toSimpleBill(simple)).toBe(simple);
   });
 });
 

@@ -1,12 +1,5 @@
-import React, {useCallback, useLayoutEffect, useState} from 'react';
-import {
-  Alert,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, {useCallback, useLayoutEffect, useMemo, useState} from 'react';
+import {Alert, FlatList, Pressable, StyleSheet, View} from 'react-native';
 import {type CompositeScreenProps, useFocusEffect} from '@react-navigation/native';
 import type {BottomTabScreenProps} from '@react-navigation/bottom-tabs';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -15,9 +8,10 @@ import {
   ProductFormModal,
   type ProductFormSubmit,
 } from '../components/ProductFormModal';
+import {AppText, Input} from '../components/ui';
 import {productRepository} from '../repositories/ProductRepository';
 import {ProfileService} from '../services/ProfileService';
-import {Colors, FontSize, Spacing} from '../constants/theme';
+import {DukaanColors, Palette, Space} from '../constants/theme';
 import type {Product} from '../models/Product';
 import type {MainTabParamList, RootStackParamList} from '../navigation/types';
 
@@ -28,14 +22,15 @@ type Props = CompositeScreenProps<
 >;
 
 /**
- * Products list screen: shows every saved product and lets the shopkeeper
- * edit or delete entries. Reads/writes only through the repository.
+ * Products list screen: shows every saved product, with search, and lets the
+ * shopkeeper edit or delete entries. Reads/writes only through the repository.
  */
 export function ProductsScreen({navigation}: Props): React.JSX.Element {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState('');
   // Drives whether the edit form shows GST rate + HSN fields.
   const [gstEnabled, setGstEnabled] = useState(false);
 
@@ -43,9 +38,11 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <TouchableOpacity onPress={() => navigation.navigate('Scan')}>
-          <Text style={styles.headerBtn}>+ Scan</Text>
-        </TouchableOpacity>
+        <Pressable onPress={() => navigation.navigate('Scan')} hitSlop={8}>
+          <AppText variant="label" color={DukaanColors.primary}>
+            ＋ Scan
+          </AppText>
+        </Pressable>
       ),
     });
   }, [navigation]);
@@ -70,6 +67,18 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
       load();
     }, [load]),
   );
+
+  // Client-side filter by name or barcode.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      return products;
+    }
+    return products.filter(
+      p =>
+        p.name.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q),
+    );
+  }, [products, query]);
 
   const handleEditSave = async (values: ProductFormSubmit) => {
     if (!editing) {
@@ -110,10 +119,21 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
 
   return (
     <View style={styles.container}>
+      <View style={styles.searchWrap}>
+        <Input
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search name or barcode"
+          prefix="🔍"
+        />
+      </View>
+
       <FlatList
-        data={products}
+        data={filtered}
         keyExtractor={item => String(item.id)}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         renderItem={({item}) => (
           <ProductListItem
             product={item}
@@ -124,10 +144,17 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No products yet.</Text>
-              <Text style={styles.emptySub}>
-                Scan a barcode to add your first product.
-              </Text>
+              <View style={styles.emptyBadge}>
+                <AppText style={styles.emptyGlyph}>▦</AppText>
+              </View>
+              <AppText variant="h3" center>
+                {query ? 'No matches' : 'No products yet'}
+              </AppText>
+              <AppText variant="bodySm" color={DukaanColors.textMuted} center>
+                {query
+                  ? 'Koi product is search se match nahi hua.'
+                  : 'Barcode scan karke apna pehla product add karein.'}
+              </AppText>
             </View>
           ) : null
         }
@@ -151,15 +178,33 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: Colors.background},
-  headerBtn: {color: Colors.primary, fontSize: FontSize.md, fontWeight: '700'},
-  listContent: {padding: Spacing.md, flexGrow: 1},
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl},
-  emptyText: {color: Colors.text, fontSize: FontSize.lg, fontWeight: '700'},
-  emptySub: {
-    color: Colors.textMuted,
-    fontSize: FontSize.md,
-    marginTop: Spacing.sm,
-    textAlign: 'center',
+  container: {flex: 1, backgroundColor: DukaanColors.bg},
+  searchWrap: {
+    paddingHorizontal: Space.lg,
+    paddingTop: Space.md,
+    paddingBottom: Space.sm,
   },
+  listContent: {
+    paddingHorizontal: Space.lg,
+    paddingTop: Space.sm,
+    paddingBottom: Space.lg,
+    flexGrow: 1,
+  },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Space.sm,
+    padding: Space.xl,
+  },
+  emptyBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 999,
+    backgroundColor: Palette.orange[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Space.xs,
+  },
+  emptyGlyph: {fontSize: 28, color: DukaanColors.primary},
 });
