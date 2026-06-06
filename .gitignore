@@ -1,0 +1,48 @@
+# ===== Dependencies =====
+node_modules/
+**/node_modules/
+
+# ===== Local / machine-specific config =====
+.claude/settings.local.json
+.env
+.env.*
+!.env.example
+*.local
+
+# ===== Android build / signing =====
+**/android/build/
+**/android/app/build/
+**/android/.gradle/
+**/android/.kotlin/
+**/android/.cxx/
+**/android/local.properties
+**/*.keystore
+!**/debug.keystore
+**/*.jks
+**/keystore.properties
+
+# ===== iOS / CocoaPods =====
+**/ios/build/
+**/ios/Pods/
+**/*.xcuserstate
+**/.xcode.env.local
+
+# ===== React Native / Metro =====
+*.jsbundle
+.metro-health-check*
+/coverage
+**/coverage/
+
+# ===== Logs =====
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# ===== OS files =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
