@@ -25,6 +25,16 @@
 create or replace function dukaan_uid() returns text
   language sql stable as $$ select auth.jwt() ->> 'sub' $$;
 
+-- Bump `updated_at` on every UPDATE (the column default only covers INSERT), so
+-- the Phase K pull cursor reliably sees edits — this is what makes last-write-
+-- wins work. Applied to every synced table by the trigger loop at the bottom.
+create or replace function dukaan_touch_updated_at() returns trigger
+  language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- shop_profile  (SQLite: single row per device → one row per user in cloud)
 -- ---------------------------------------------------------------------------
@@ -43,7 +53,6 @@ create table if not exists shop_profile (
   billing_mode   text,
   default_unit   text,
   created_at     bigint not null,
-  device_updated_at bigint not null,
   updated_at     timestamptz not null default now(),
   primary key (user_id, id)
 );
@@ -80,7 +89,6 @@ create table if not exists manual_items (
   gst_rate    numeric not null default 0,
   unit        text   not null default 'pcs',
   created_at  bigint not null,
-  device_updated_at bigint not null,
   updated_at  timestamptz not null default now(),
   primary key (user_id, id)
 );
@@ -96,7 +104,6 @@ create table if not exists services (
   sac_code    text,
   gst_rate    numeric not null default 0,
   created_at  bigint not null,
-  device_updated_at bigint not null,
   updated_at  timestamptz not null default now(),
   primary key (user_id, id)
 );
@@ -110,7 +117,6 @@ create table if not exists customers (
   name        text   not null,
   phone       text   not null,
   created_at  bigint not null,
-  device_updated_at bigint not null,
   updated_at  timestamptz not null default now(),
   primary key (user_id, id)
 );
@@ -203,5 +209,9 @@ begin
         using (user_id = dukaan_uid())
         with check (user_id = dukaan_uid());
     $f$, t);
+    -- Keep updated_at fresh on every UPDATE (drives the pull cursor / LWW).
+    execute format(
+      'create trigger %1$I_touch before update on %1$I '
+      || 'for each row execute function dukaan_touch_updated_at();', t);
   end loop;
 end $$;

@@ -3,6 +3,7 @@
  * against in-memory fakes for the outbox, cursors, local store and transport.
  */
 import {SyncEngine} from '../src/services/sync/SyncEngine';
+import {toRemoteRow} from '../src/services/sync/LocalSyncStore';
 import type {
   ISyncMetaRepository,
   ISyncQueueRepository,
@@ -109,6 +110,39 @@ function make(over?: {
   const engine = new SyncEngine(queue, meta, store, transport, CFG);
   return {engine, queue, meta, store, transport};
 }
+
+describe('toRemoteRow (push payload shaping)', () => {
+  it('parses local TEXT-JSON columns into objects for cloud jsonb', () => {
+    const out = toRemoteRow('products', {
+      id: 1,
+      attributes: '{"batch":"DL2207"}',
+    });
+    expect(out.attributes).toEqual({batch: 'DL2207'});
+  });
+
+  it('null-coerces empty / invalid JSON', () => {
+    expect(toRemoteRow('products', {id: 1, attributes: ''}).attributes).toBeNull();
+    expect(toRemoteRow('products', {id: 1, attributes: 'not json'}).attributes).toBeNull();
+    expect(toRemoteRow('parked_bills', {id: 1, items_json: '[]'}).items_json).toEqual([]);
+  });
+
+  it('converts local 0/1 booleans to real booleans', () => {
+    expect(toRemoteRow('bills', {id: 1, is_inter_state: 1}).is_inter_state).toBe(true);
+    expect(toRemoteRow('bills', {id: 1, is_inter_state: 0}).is_inter_state).toBe(false);
+    expect(toRemoteRow('shop_profile', {id: 1, gst_enabled: 1}).gst_enabled).toBe(true);
+  });
+
+  it('leaves non-special columns untouched', () => {
+    const out = toRemoteRow('products', {id: 1, name: 'A', price: 10});
+    expect(out).toMatchObject({id: 1, name: 'A', price: 10});
+  });
+
+  it('strips the device-local updated_at (cloud owns its own LWW clock)', () => {
+    const out = toRemoteRow('customers', {id: 1, name: 'Ram', updated_at: 123});
+    expect(out.updated_at).toBeUndefined();
+    expect(out).toMatchObject({id: 1, name: 'Ram'});
+  });
+});
 
 describe('SyncEngine.push', () => {
   it('pushes upserts with live rows and clears the outbox', async () => {
