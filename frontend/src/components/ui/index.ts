@@ -29,3 +29,6 @@ export {Chip} from './Chip';
 
 export {TopBar} from './TopBar';
 export {BottomSheet, CenterModal} from './Sheet';
+
+export {Icon} from './Icon';
+export type {IconName} from './Icon';

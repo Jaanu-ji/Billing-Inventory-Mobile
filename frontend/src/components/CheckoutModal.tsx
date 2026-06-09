@@ -11,7 +11,8 @@ import {
 import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
 import {INDIAN_STATES} from '../constants/states';
 import {type BillType} from '../constants/gst';
-import {calculateBillTotals} from '../services/GstService';
+import type {PaymentMode, PaymentStatus} from '../constants/payments';
+import {calculateBillTotals, type DiscountType} from '../services/GstService';
 import {formatPrice} from '../utils/format';
 import {
   AppText,
@@ -22,19 +23,39 @@ import {
   Row,
   Segmented,
   Select,
+  Toggle,
   BottomSheet,
+  Icon,
 } from './ui';
+import {PaymentSheet} from './PaymentSheet';
+import {DiscountSheet, type DiscountValue} from './DiscountSheet';
+import {
+  CustomerPickSheet,
+  type CustomerSelection,
+} from './CustomerPickSheet';
 import type {CartItem} from '../models/Bill';
+import type {CustomerWithPending} from '../models/Customer';
 
 export interface CheckoutDetails {
   customerName: string;
   customerPhone: string;
+  /** Chosen saved customer id (Phase F). null = new/none — caller upserts. */
+  customerId: number | null;
   /** 'simple' or 'gst'. Always 'simple' when the shop isn't GST-registered. */
   billType: BillType;
   /** Customer GSTIN for a B2B GST bill (optional). */
   customerGstin: string;
   /** Customer GST state code — decides intra vs inter-state (optional). */
   customerStateCode: string | null;
+  /** Paid or unpaid/udhaar (Phase F). */
+  paymentStatus: PaymentStatus;
+  /** How a paid bill was settled (Phase F); null for udhaar. */
+  paymentMode: PaymentMode | null;
+  /** Bill-level discount (Phase G); null = none. */
+  discountType?: DiscountType;
+  discountValue?: number;
+  /** Round the payable to the nearest rupee (Phase G). */
+  roundOff: boolean;
 }
 
 interface Props {
@@ -45,6 +66,8 @@ interface Props {
   gstEnabled: boolean;
   /** Shop's own GST state code (place of supply default). */
   shopStateCode: string | null;
+  /** Saved customers (with pending) for the customer picker (Phase F). */
+  customers: CustomerWithPending[];
   saving?: boolean;
   onConfirm: (details: CheckoutDetails) => void;
   onCancel: () => void;
@@ -70,12 +93,13 @@ export function CheckoutModal({
   items,
   gstEnabled,
   shopStateCode,
+  customers,
   saving = false,
   onConfirm,
   onCancel,
 }: Props): React.JSX.Element {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  // Chosen customer (Phase F). null = walk-in / none.
+  const [customer, setCustomer] = useState<CustomerSelection | null>(null);
   // Default to a GST bill for a GST shop (they can switch to Simple per sale).
   const [billType, setBillType] = useState<BillType>(
     gstEnabled ? 'gst' : 'simple',
@@ -85,24 +109,40 @@ export function CheckoutModal({
     null,
   );
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [custPickerOpen, setCustPickerOpen] = useState(false);
+  const [paySheetOpen, setPaySheetOpen] = useState(false);
+  const [udhaarError, setUdhaarError] = useState<string | null>(null);
+  // Bill-level adjustments (Phase G).
+  const [discount, setDiscount] = useState<DiscountValue | null>(null);
+  const [roundOff, setRoundOff] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setName('');
-      setPhone('');
+      setCustomer(null);
       setBillType(gstEnabled ? 'gst' : 'simple');
       setCustomerGstin('');
       setCustomerStateCode(null);
       setPickerOpen(false);
+      setCustPickerOpen(false);
+      setPaySheetOpen(false);
+      setUdhaarError(null);
+      setDiscount(null);
+      setRoundOff(false);
+      setDiscountOpen(false);
     }
   }, [visible, gstEnabled]);
 
-  // Live totals, recomputed as the bill type / customer state changes.
+  // Live totals, recomputed as the bill type / state / adjustments change.
   const isGstBill = gstEnabled && billType === 'gst';
   const totals = useMemo(
     () =>
-      calculateBillTotals(items, shopStateCode, customerStateCode, isGstBill),
-    [items, shopStateCode, customerStateCode, isGstBill],
+      calculateBillTotals(items, shopStateCode, customerStateCode, isGstBill, {
+        discountType: discount?.type,
+        discountValue: discount?.value,
+        roundOff,
+      }),
+    [items, shopStateCode, customerStateCode, isGstBill, discount, roundOff],
   );
 
   const selectedStateLabel =
@@ -110,14 +150,39 @@ export function CheckoutModal({
       ? stateOptions.find(o => o.value === customerStateCode)?.label ?? null
       : null;
 
-  const handleConfirm = () => {
+  const confirmWith = (
+    paymentStatus: PaymentStatus,
+    paymentMode: PaymentMode | null,
+  ) => {
     onConfirm({
-      customerName: name,
-      customerPhone: phone,
+      customerName: customer?.name ?? '',
+      customerPhone: customer?.phone ?? '',
+      customerId: customer?.id ?? null,
       billType: isGstBill ? 'gst' : 'simple',
       customerGstin: isGstBill ? customerGstin : '',
       customerStateCode: isGstBill ? customerStateCode : null,
+      paymentStatus,
+      paymentMode,
+      discountType: discount?.type,
+      discountValue: discount?.value,
+      roundOff,
     });
+  };
+
+  // "Received payment" → pick a mode → save as paid.
+  const handleReceived = (mode: PaymentMode) => {
+    setPaySheetOpen(false);
+    confirmWith('paid', mode);
+  };
+
+  // "Udhaar" → save as unpaid. Needs a customer (with a phone) to owe it.
+  const handleUdhaar = () => {
+    if (!customer || customer.phone.trim().length < 10) {
+      setUdhaarError('Udhaar ke liye customer (number ke saath) chunein.');
+      setCustPickerOpen(true);
+      return;
+    }
+    confirmWith('unpaid', null);
   };
 
   return (
@@ -158,6 +223,43 @@ export function CheckoutModal({
                   />
                 ) : null}
 
+                {/* Adjustments (Phase G): bill-level discount + round-off. */}
+                <AppText variant="overline" color={DukaanColors.textMuted} style={styles.adjLabel}>
+                  ADJUSTMENTS
+                </AppText>
+                <Pressable
+                  style={styles.adjustRow}
+                  onPress={() => setDiscountOpen(true)}>
+                  <Icon name="tag" size={18} color={DukaanColors.primary} />
+                  <View style={styles.adjustInfo}>
+                    <AppText variant="body" weight="700">
+                      Discount
+                    </AppText>
+                    {discount ? (
+                      <AppText variant="bodySm" color={DukaanColors.textMuted}>
+                        {discount.type === 'percent'
+                          ? `${discount.value}% off`
+                          : `${formatPrice(discount.value)} off`}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  <AppText variant="label" color={DukaanColors.primary} numeric>
+                    {totals.discount > 0 ? `− ${formatPrice(totals.discount)}` : 'Add'}
+                  </AppText>
+                </Pressable>
+                <View style={[styles.adjustRow, styles.block]}>
+                  <Icon name="receipt" size={18} color={DukaanColors.primary} strokeWidth={2.2} />
+                  <View style={styles.adjustInfo}>
+                    <AppText variant="body" weight="700">
+                      Round off
+                    </AppText>
+                    <AppText variant="bodySm" color={DukaanColors.textMuted}>
+                      Nearest rupee
+                    </AppText>
+                  </View>
+                  <Toggle value={roundOff} onValueChange={setRoundOff} />
+                </View>
+
                 {/* Totals / GST preview. */}
                 <View
                   style={[
@@ -171,58 +273,73 @@ export function CheckoutModal({
                         value={formatPrice(totals.subtotal)}
                       />
                       {totals.isInterState ? (
-                        <PreviewLine
-                          label="IGST"
-                          value={formatPrice(totals.igst)}
-                        />
+                        <PreviewLine label="IGST" value={formatPrice(totals.igst)} />
                       ) : (
                         <>
-                          <PreviewLine
-                            label="CGST"
-                            value={formatPrice(totals.cgst)}
-                          />
-                          <PreviewLine
-                            label="SGST"
-                            value={formatPrice(totals.sgst)}
-                          />
+                          <PreviewLine label="CGST" value={formatPrice(totals.cgst)} />
+                          <PreviewLine label="SGST" value={formatPrice(totals.sgst)} />
                         </>
                       )}
-                      <View style={styles.grandLine}>
-                        <AppText variant="body" color={DukaanColors.textMuted}>
-                          Total payable
-                        </AppText>
-                        <AppText variant="h2" numeric>
-                          {formatPrice(totals.total)}
-                        </AppText>
-                      </View>
                     </>
-                  ) : (
-                    <View style={styles.previewLine}>
-                      <AppText variant="body" color={DukaanColors.textMuted}>
-                        Total payable
-                      </AppText>
-                      <AppText variant="h2" numeric>
-                        {formatPrice(totals.total)}
-                      </AppText>
-                    </View>
-                  )}
+                  ) : totals.discount > 0 || totals.roundOff !== 0 ? (
+                    <PreviewLine label="Subtotal" value={formatPrice(totals.subtotal)} />
+                  ) : null}
+
+                  {totals.discount > 0 ? (
+                    <PreviewLine
+                      label="Discount"
+                      value={`− ${formatPrice(totals.discount)}`}
+                    />
+                  ) : null}
+                  {totals.roundOff !== 0 ? (
+                    <PreviewLine
+                      label="Round off"
+                      value={`${totals.roundOff > 0 ? '+' : '−'} ${formatPrice(
+                        Math.abs(totals.roundOff),
+                      )}`}
+                    />
+                  ) : null}
+
+                  <View style={styles.grandLine}>
+                    <AppText variant="body" color={DukaanColors.textMuted}>
+                      Total payable
+                    </AppText>
+                    <AppText variant="h2" numeric>
+                      {formatPrice(totals.total)}
+                    </AppText>
+                  </View>
                 </View>
 
-                <Field label="Customer name (optional)" style={styles.block}>
-                  <Input
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="e.g. Ramesh"
-                  />
-                </Field>
-
-                <Field label="Phone (optional)" style={styles.block}>
-                  <Input
-                    value={phone}
-                    onChangeText={setPhone}
-                    placeholder="e.g. 98765 43210"
-                    keyboardType="phone-pad"
-                  />
+                {/* Customer (Phase F): optional for a cash sale, required for
+                    udhaar. Saved customers remember their number. */}
+                <Field label="Customer (optional)" style={styles.block}>
+                  {customer ? (
+                    <Pressable
+                      style={styles.customerRow}
+                      onPress={() => setCustPickerOpen(true)}>
+                      <View style={styles.customerInfo}>
+                        <AppText variant="body" weight="700" numberOfLines={1}>
+                          {customer.name}
+                        </AppText>
+                        {customer.phone ? (
+                          <AppText variant="bodySm" color={DukaanColors.textMuted}>
+                            {customer.phone}
+                          </AppText>
+                        ) : null}
+                      </View>
+                      <AppText variant="cap" color={DukaanColors.primary}>
+                        Change
+                      </AppText>
+                    </Pressable>
+                  ) : (
+                    <Button
+                      title="Add customer"
+                      variant="outline"
+                      left={<Icon name="plus" size={16} color={DukaanColors.primary} strokeWidth={2.4} />}
+                      block
+                      onPress={() => setCustPickerOpen(true)}
+                    />
+                  )}
                 </Field>
 
                 {/* GST-only customer fields. Both optional: leave blank for a
@@ -249,16 +366,25 @@ export function CheckoutModal({
                   </>
                 ) : null}
 
+                {udhaarError ? (
+                  <AppText variant="cap" color={DukaanColors.danger} style={styles.block}>
+                    {udhaarError}
+                  </AppText>
+                ) : null}
+
+                {/* Payment (Phase F): mark as udhaar, or receive payment now. */}
                 <View style={styles.actions}>
                   <Button
-                    title="Back"
+                    title="Udhaar"
                     variant="outline"
-                    onPress={onCancel}
+                    left={<Icon name="receipt" size={16} color={DukaanColors.primary} strokeWidth={2.2} />}
+                    onPress={handleUdhaar}
+                    loading={saving}
                     style={styles.actionBtn}
                   />
                   <Button
-                    title="Save bill"
-                    onPress={handleConfirm}
+                    title="Received payment"
+                    onPress={() => setPaySheetOpen(true)}
                     loading={saving}
                     style={styles.actionBtn}
                   />
@@ -277,6 +403,39 @@ export function CheckoutModal({
           setPickerOpen(false);
         }}
         onClose={() => setPickerOpen(false)}
+      />
+
+      <CustomerPickSheet
+        visible={custPickerOpen}
+        customers={customers}
+        onPick={sel => {
+          setCustomer(sel);
+          setUdhaarError(null);
+          setCustPickerOpen(false);
+        }}
+        onClose={() => setCustPickerOpen(false)}
+      />
+
+      <PaymentSheet
+        visible={paySheetOpen}
+        total={totals.total}
+        onSelect={handleReceived}
+        onClose={() => setPaySheetOpen(false)}
+      />
+
+      <DiscountSheet
+        visible={discountOpen}
+        payable={totals.subtotal + totals.taxTotal}
+        current={discount}
+        onApply={d => {
+          setDiscount(d);
+          setDiscountOpen(false);
+        }}
+        onRemove={() => {
+          setDiscount(null);
+          setDiscountOpen(false);
+        }}
+        onClose={() => setDiscountOpen(false)}
       />
     </>
   );
@@ -355,11 +514,7 @@ function StatePicker({
 }
 
 function Tick(): React.JSX.Element {
-  return (
-    <AppText weight="800" color={DukaanColors.primary}>
-      ✓
-    </AppText>
-  );
+  return <Icon name="check" size={18} color={DukaanColors.primary} strokeWidth={2.4} />;
 }
 
 const styles = StyleSheet.create({
@@ -418,4 +573,23 @@ const styles = StyleSheet.create({
   actions: {flexDirection: 'row', marginTop: Space.sm, gap: Space.md},
   actionBtn: {flex: 1},
   pickerList: {maxHeight: 360},
+  customerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    borderWidth: 1.5,
+    borderColor: DukaanColors.hairline,
+    borderRadius: Radii.md,
+    paddingVertical: Space.md,
+    paddingHorizontal: Space.md,
+  },
+  customerInfo: {flex: 1, gap: 2},
+  adjLabel: {marginBottom: Space.sm},
+  adjustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingVertical: Space.sm,
+  },
+  adjustInfo: {flex: 1, gap: 1},
 });

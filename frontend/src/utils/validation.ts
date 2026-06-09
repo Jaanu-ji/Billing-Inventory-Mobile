@@ -102,3 +102,29 @@ export function validateProfileForm(values: ProfileFormValues): {
 
   return {valid: Object.keys(errors).length === 0, errors};
 }
+
+/**
+ * Phone-OTP login validation (Phase J).
+ *
+ * Normalises an Indian mobile to E.164 (`+91XXXXXXXXXX`) — the format Firebase
+ * phone auth expects. Accepts a bare 10-digit mobile (must start 6–9), a `0`
+ * trunk prefix, or an existing `91`/`+91` country code; rejects anything else.
+ */
+export function toE164India(raw: string | null | undefined): string | null {
+  if (!raw) {
+    return null;
+  }
+  const digits = raw.replace(/\D/g, '');
+  let local = digits;
+  if (local.length === 12 && local.startsWith('91')) {
+    local = local.slice(2);
+  } else if (local.length === 11 && local.startsWith('0')) {
+    local = local.slice(1);
+  }
+  return local.length === 10 && /^[6-9]/.test(local) ? `+91${local}` : null;
+}
+
+/** Whether `code` is a valid OTP of the expected length (digits only). */
+export function isValidOtp(code: string, length = 6): boolean {
+  return new RegExp(`^\\d{${length}}$`).test(code.trim());
+}

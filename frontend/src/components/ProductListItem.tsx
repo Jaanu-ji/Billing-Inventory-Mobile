@@ -2,6 +2,8 @@ import React from 'react';
 import {StyleSheet, View} from 'react-native';
 import {AppText, Badge, Button, RowThumb} from './ui';
 import {DukaanColors, Space} from '../constants/theme';
+import {unitLabel} from '../constants/units';
+import {summariseAttributes} from '../constants/productFields';
 import {formatPrice} from '../utils/format';
 import type {Product} from '../models/Product';
 
@@ -30,6 +32,9 @@ export function ProductListItem({
   onEdit,
   onDelete,
 }: Props): React.JSX.Element {
+  // Business-adaptive extras (size/colour, batch/expiry) as a one-line summary.
+  const attrSummary = summariseAttributes(product.attributes);
+  const subtitle = [product.category, attrSummary].filter(Boolean).join(' · ');
   return (
     <View style={styles.card}>
       <View style={styles.top}>
@@ -41,10 +46,21 @@ export function ProductListItem({
           <AppText variant="bodySm" color={DukaanColors.textMuted} numberOfLines={1}>
             {product.barcode}
           </AppText>
+          {subtitle ? (
+            <AppText
+              variant="cap"
+              color={DukaanColors.textMuted}
+              numberOfLines={1}>
+              {subtitle}
+            </AppText>
+          ) : null}
         </View>
         <View style={styles.priceCol}>
           <AppText variant="h3" numeric>
             {formatPrice(product.price)}
+          </AppText>
+          <AppText variant="cap" color={DukaanColors.textMuted}>
+            / {unitLabel(product.unit)}
           </AppText>
           {product.gstRate > 0 ? (
             <Badge variant="gst">{`GST ${product.gstRate}%`}</Badge>

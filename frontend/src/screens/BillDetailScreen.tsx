@@ -6,10 +6,13 @@ import {billRepository} from '../repositories/BillRepository';
 import {ProfileService} from '../services/ProfileService';
 import {ShareService} from '../services/ShareService';
 import {AppText, Badge, Button} from '../components/ui';
-import {formatPrice, formatDateTime} from '../utils/format';
-import {shopTypeLabel} from '../constants/shopTypes';
+import {PaymentSheet} from '../components/PaymentSheet';
+import {formatPrice, formatDateTime, formatQuantity} from '../utils/format';
+import {unitLabel} from '../constants/units';
+import {paymentModeLabel, type PaymentMode} from '../constants/payments';
+import {labelAttributes} from '../constants/productFields';
 import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
-import type {Bill} from '../models/Bill';
+import type {Bill, BillItem} from '../models/Bill';
 import type {ShopProfile} from '../models/ShopProfile';
 import type {RootStackParamList} from '../navigation/types';
 
@@ -22,6 +25,9 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
   const [profile, setProfile] = useState<ShopProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
+  // Mark-an-udhaar-bill-paid (Phase F).
+  const [payOpen, setPayOpen] = useState(false);
+  const [marking, setMarking] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +81,24 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
     }
   };
 
+  // Mark this (udhaar) bill paid, recording how it was settled. Best-effort:
+  // failures surface an alert; the bill stays unpaid so it can be retried.
+  const handleMarkPaid = async (mode: PaymentMode) => {
+    if (!bill || marking) {
+      return;
+    }
+    setPayOpen(false);
+    setMarking(true);
+    try {
+      await billRepository.markPaid(bill.id, mode);
+      await load();
+    } catch {
+      Alert.alert('Could not update', 'Bill abhi unpaid hai. Dobara koshish karein.');
+    } finally {
+      setMarking(false);
+    }
+  };
+
   const handleWhatsApp = async () => {
     if (!bill || sharing) {
       return;
@@ -111,109 +135,161 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
   // Place of supply: the customer's state if captured, else the shop's own state.
   const placeOfSupply = bill.customerState ?? profile?.state ?? null;
 
+  // A mixed bill (goods + services) is shown in labelled sections; a single-kind
+  // bill keeps the plain "ITEMS" list. Manual goods group with products.
+  const allItems = bill.items ?? [];
+  const goods = allItems.filter(i => i.kind !== 'service');
+  const services = allItems.filter(i => i.kind === 'service');
+  const isMixed = goods.length > 0 && services.length > 0;
+
+  const isUnpaid = bill.paymentStatus === 'unpaid';
+
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Shop header from the saved profile (Phase 2 Part 2). */}
-      {profile ? (
-        <View style={styles.shopCard}>
-          <AppText variant="h2">{profile.shopName}</AppText>
-          <AppText variant="bodySm" color={DukaanColors.textMuted}>
-            {shopTypeLabel(profile.shopType)}
-          </AppText>
-          {profile.phone ? (
+      {/* Udhaar banner (Phase F): pending bills can be marked paid here. */}
+      {isUnpaid ? (
+        <View style={styles.udhaarBanner}>
+          <View style={styles.udhaarInfo}>
+            <AppText variant="label" color={DukaanColors.warning}>
+              Udhaar · pending
+            </AppText>
             <AppText variant="bodySm" color={DukaanColors.textMuted}>
-              Ph: {profile.phone}
+              {bill.customerName ? `${bill.customerName} owes ` : 'Pending '}
+              {formatPrice(bill.total)}
             </AppText>
-          ) : null}
-          {profile.address ? (
-            <AppText variant="bodySm" color={DukaanColors.textMuted}>
-              {profile.address}
-            </AppText>
-          ) : null}
-          {profile.gstEnabled && profile.gstin ? (
-            <AppText variant="bodySm" color={DukaanColors.textMuted} numeric>
-              GSTIN: {profile.gstin}
-            </AppText>
-          ) : null}
+          </View>
+          <Button
+            title="Mark paid"
+            variant="teal"
+            size="sm"
+            onPress={() => setPayOpen(true)}
+            loading={marking}
+          />
         </View>
       ) : null}
 
-      <View style={styles.headerCard}>
-        <View style={styles.billNoRow}>
-          <AppText variant="h1">Bill #{bill.billNumber}</AppText>
+      {/* Invoice card — one self-contained "bill" like the design (09/31). */}
+      <View style={styles.invoiceCard}>
+        {/* Centered shop header */}
+        {profile ? (
+          <View style={styles.invShop}>
+            <AppText variant="h2" center>
+              {profile.shopName}
+            </AppText>
+            {profile.address ? (
+              <AppText variant="cap" color={DukaanColors.textMuted} center>
+                {profile.address}
+              </AppText>
+            ) : null}
+            {profile.phone ? (
+              <AppText variant="cap" color={DukaanColors.textMuted} center>
+                {profile.phone}
+                {profile.gstEnabled && profile.gstin
+                  ? ` · GSTIN ${profile.gstin}`
+                  : ''}
+              </AppText>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.docBadgeRow}>
           <Badge variant={isGst ? 'gst' : 'simple'}>
             {isGst ? 'TAX INVOICE' : 'CASH MEMO'}
           </Badge>
+          <Badge variant={isUnpaid ? 'unpaid' : 'paid'} dot>
+            {isUnpaid
+              ? 'Udhaar'
+              : `Paid${
+                  bill.paymentMode ? ' · ' + paymentModeLabel(bill.paymentMode) : ''
+                }`}
+          </Badge>
         </View>
-        <AppText variant="bodySm" color={DukaanColors.textMuted}>
-          {formatDateTime(bill.createdAt)}
-        </AppText>
-        {bill.customerName ? (
-          <AppText variant="bodySm" color={DukaanColors.textMuted}>
-            Customer: {bill.customerName}
-          </AppText>
-        ) : null}
-        {bill.customerPhone ? (
-          <AppText variant="bodySm" color={DukaanColors.textMuted}>
-            Phone: {bill.customerPhone}
-          </AppText>
-        ) : null}
-        {isGst && bill.customerGstin ? (
-          <AppText variant="bodySm" color={DukaanColors.textMuted} numeric>
-            Customer GSTIN: {bill.customerGstin}
-          </AppText>
-        ) : null}
-        {isGst && placeOfSupply ? (
-          <AppText variant="bodySm" color={DukaanColors.textMuted}>
-            Place of supply: {placeOfSupply}
-          </AppText>
-        ) : null}
-      </View>
 
-      <AppText variant="overline" color={DukaanColors.textMuted} style={styles.sectionTitle}>
-        ITEMS
-      </AppText>
-      {(bill.items ?? []).map(item => (
-        <View key={item.id} style={styles.itemRow}>
-          <View style={styles.itemInfo}>
-            <AppText variant="body" weight="700" numberOfLines={1}>
-              {item.name}
+        {/* Three-column meta row: Bill no. · Customer · Date */}
+        <View style={styles.metaRow}>
+          <MetaCol label="Bill no." value={`#${bill.billNumber}`} align="left" />
+          <MetaCol
+            label="Customer"
+            value={bill.customerName || 'Walk-in'}
+            align="center"
+          />
+          <MetaCol
+            label="Date"
+            value={formatDateTime(bill.createdAt)}
+            align="right"
+          />
+        </View>
+        {isGst && (bill.customerGstin || placeOfSupply) ? (
+          <AppText variant="cap" color={DukaanColors.textMuted} style={styles.metaExtra}>
+            {bill.customerGstin ? `Customer GSTIN: ${bill.customerGstin}` : ''}
+            {bill.customerGstin && placeOfSupply ? '  ·  ' : ''}
+            {placeOfSupply ? `Place of supply: ${placeOfSupply}` : ''}
+          </AppText>
+        ) : null}
+
+        <View style={styles.invDivider} />
+
+        {/* Items (sectioned for a mixed bill, else a plain list) */}
+        {isMixed ? (
+          <>
+            <AppText variant="overline" color={DukaanColors.textMuted} style={styles.sectionTitle}>
+              PRODUCTS
             </AppText>
-            <AppText variant="bodySm" color={DukaanColors.textMuted}>
-              {item.quantity} × {formatPrice(item.price)}
-              {isGst && item.gstRate > 0 ? ` · GST ${item.gstRate}%` : ''}
-              {isGst && item.hsnCode ? ` · HSN ${item.hsnCode}` : ''}
+            {goods.map(item => (
+              <ItemDetailRow key={item.id} item={item} isGst={isGst} shopType={profile?.shopType ?? null} />
+            ))}
+            <AppText variant="overline" color={DukaanColors.textMuted} style={styles.sectionTitle}>
+              SERVICES
+            </AppText>
+            {services.map(item => (
+              <ItemDetailRow key={item.id} item={item} isGst={isGst} shopType={profile?.shopType ?? null} />
+            ))}
+          </>
+        ) : (
+          allItems.map(item => (
+            <ItemDetailRow key={item.id} item={item} isGst={isGst} shopType={profile?.shopType ?? null} />
+          ))
+        )}
+
+        {/* Totals */}
+        <View style={styles.totalsInner}>
+          <TotalLine
+            label={isGst ? 'Taxable value' : 'Subtotal'}
+            value={formatPrice(bill.subtotal)}
+          />
+          {isGst && !bill.isInterState ? (
+            <>
+              <TotalLine label="CGST" value={formatPrice(bill.cgst)} />
+              <TotalLine label="SGST" value={formatPrice(bill.sgst)} />
+            </>
+          ) : null}
+          {isGst && bill.isInterState ? (
+            <TotalLine label="IGST" value={formatPrice(bill.igst)} />
+          ) : null}
+          {bill.discount > 0 ? (
+            <TotalLine label="Discount" value={`− ${formatPrice(bill.discount)}`} />
+          ) : null}
+          {bill.roundOff !== 0 ? (
+            <TotalLine
+              label="Round off"
+              value={`${bill.roundOff > 0 ? '+' : '−'} ${formatPrice(
+                Math.abs(bill.roundOff),
+              )}`}
+            />
+          ) : null}
+
+          <View style={styles.grandLine}>
+            <AppText variant="h3">{isGst ? 'Total (incl. GST)' : 'Total'}</AppText>
+            <AppText variant="h1" numeric color={DukaanColors.teal}>
+              {formatPrice(bill.total)}
             </AppText>
           </View>
-          <AppText variant="body" weight="800" numeric>
-            {formatPrice(item.lineTotal)}
-          </AppText>
         </View>
-      ))}
 
-      <View style={styles.totalsCard}>
-        <TotalLine
-          label={isGst ? 'Taxable value' : 'Subtotal'}
-          value={formatPrice(bill.subtotal)}
-        />
-
-        {/* GST breakup: CGST + SGST (intra-state) or IGST (inter-state). */}
-        {isGst && !bill.isInterState ? (
-          <>
-            <TotalLine label="CGST" value={formatPrice(bill.cgst)} />
-            <TotalLine label="SGST" value={formatPrice(bill.sgst)} />
-          </>
-        ) : null}
-        {isGst && bill.isInterState ? (
-          <TotalLine label="IGST" value={formatPrice(bill.igst)} />
-        ) : null}
-
-        <View style={styles.grandLine}>
-          <AppText variant="h3">Total</AppText>
-          <AppText variant="h1" numeric color={DukaanColors.teal}>
-            {formatPrice(bill.total)}
-          </AppText>
-        </View>
+        <AppText variant="cap" color={DukaanColors.textFaint} center style={styles.thanks}>
+          🙏 Dhanyavaad! Powered by DUKAAN
+        </AppText>
       </View>
 
       {/* Share / PDF — works for any past bill. The PDF renders the same GST
@@ -246,6 +322,61 @@ export function BillDetailScreen({route}: Props): React.JSX.Element {
         ) : null}
       </View>
     </ScrollView>
+
+    <PaymentSheet
+      visible={payOpen}
+      total={bill.total}
+      onSelect={handleMarkPaid}
+      onClose={() => setPayOpen(false)}
+    />
+    </>
+  );
+}
+
+/** One item line in the bill detail (shows HSN for goods, SAC for services). */
+function ItemDetailRow({
+  item,
+  isGst,
+  shopType,
+}: {
+  item: BillItem;
+  isGst: boolean;
+  shopType: string | null;
+}): React.JSX.Element {
+  const code = item.sacCode
+    ? ` · SAC ${item.sacCode}`
+    : item.hsnCode
+    ? ` · HSN ${item.hsnCode}`
+    : '';
+  const qty =
+    item.kind === 'service'
+      ? formatQuantity(item.quantity)
+      : `${formatQuantity(item.quantity)} ${unitLabel(item.unit)}`;
+  // Business-adaptive extras (Phase H): batch/expiry, size/colour, …
+  const attrs = labelAttributes(shopType, item.attributes);
+  const attrLine = attrs.map(a => `${a.label}: ${a.value}`).join(' · ');
+  return (
+    <View style={styles.itemRow}>
+      <View style={styles.itemInfo}>
+        <AppText variant="body" weight="700" numberOfLines={1}>
+          {item.name}
+        </AppText>
+        <AppText variant="bodySm" color={DukaanColors.textMuted}>
+          {qty} × {formatPrice(item.price)}
+          {item.kind !== 'service' ? `/${unitLabel(item.unit)}` : ''}
+          {isGst && item.gstRate > 0 ? ` · GST ${item.gstRate}%` : ''}
+          {isGst ? code : ''}
+        </AppText>
+        {attrLine ? (
+          <AppText variant="cap" color={DukaanColors.textFaint}>
+            {attrLine}
+          </AppText>
+        ) : null}
+      </View>
+      <AppText variant="body" weight="800" numeric>
+        {formatPrice(item.lineTotal)}
+      </AppText>
+    </View>
   );
 }
 
@@ -269,57 +400,103 @@ function TotalLine({
   );
 }
 
+/** One column of the invoice meta row (tiny label over a value). */
+function MetaCol({
+  label,
+  value,
+  align,
+}: {
+  label: string;
+  value: string;
+  align: 'left' | 'center' | 'right';
+}): React.JSX.Element {
+  const colStyle =
+    align === 'left'
+      ? styles.metaColLeft
+      : align === 'right'
+      ? styles.metaColRight
+      : styles.metaColCenter;
+  const textStyle =
+    align === 'left'
+      ? styles.metaTextLeft
+      : align === 'right'
+      ? styles.metaTextRight
+      : styles.metaTextCenter;
+  return (
+    <View style={[styles.metaCol, colStyle]}>
+      <AppText variant="cap" color={DukaanColors.textFaint}>
+        {label}
+      </AppText>
+      <AppText variant="bodySm" weight="700" numberOfLines={1} style={textStyle}>
+        {value}
+      </AppText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: DukaanColors.bg},
   content: {padding: Space.lg},
+  udhaarBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    backgroundColor: Palette.amber[50],
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: Palette.amber[100],
+    padding: Space.md,
+    marginBottom: Space.md,
+  },
+  udhaarInfo: {flex: 1, gap: 2},
+  statusRow: {flexDirection: 'row', marginTop: Space.xs},
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: DukaanColors.bg,
   },
-  shopCard: {
-    backgroundColor: DukaanColors.surface,
-    borderRadius: Radii.lg,
-    padding: Space.lg,
-    marginBottom: Space.md,
-    borderBottomWidth: 3,
-    borderBottomColor: DukaanColors.primary,
-    gap: 2,
-  },
-  headerCard: {
+  invoiceCard: {
     backgroundColor: DukaanColors.surface,
     borderRadius: Radii.lg,
     borderWidth: 1,
     borderColor: DukaanColors.hairline,
     padding: Space.lg,
     marginBottom: Space.md,
-    gap: 4,
   },
-  billNoRow: {
+  invShop: {alignItems: 'center', gap: 2},
+  docBadgeRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
+    gap: Space.sm,
+    marginTop: Space.md,
   },
-  sectionTitle: {marginBottom: Space.sm},
+  metaRow: {flexDirection: 'row', marginTop: Space.lg, gap: Space.sm},
+  metaCol: {flex: 1, gap: 2},
+  metaColLeft: {alignItems: 'flex-start'},
+  metaColCenter: {alignItems: 'center'},
+  metaColRight: {alignItems: 'flex-end'},
+  metaTextLeft: {textAlign: 'left'},
+  metaTextCenter: {textAlign: 'center'},
+  metaTextRight: {textAlign: 'right'},
+  metaExtra: {marginTop: Space.sm, textAlign: 'center'},
+  invDivider: {
+    height: 1,
+    backgroundColor: DukaanColors.hairline,
+    marginVertical: Space.md,
+  },
+  sectionTitle: {marginBottom: Space.xs, marginTop: Space.xs},
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: DukaanColors.surface,
-    borderRadius: Radii.md,
-    borderWidth: 1,
-    borderColor: DukaanColors.hairline,
-    padding: Space.lg,
-    marginBottom: Space.sm,
+    paddingVertical: Space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: DukaanColors.hairline,
   },
   itemInfo: {flex: 1, marginRight: Space.sm, gap: 2},
-  totalsCard: {
-    backgroundColor: Palette.slate[50],
-    borderRadius: Radii.lg,
-    padding: Space.lg,
-    marginTop: Space.sm,
-  },
+  totalsInner: {marginTop: Space.md},
+  thanks: {marginTop: Space.lg},
   totalLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',

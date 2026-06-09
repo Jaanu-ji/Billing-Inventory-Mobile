@@ -5,12 +5,11 @@
  * It does NOT render a dropdown itself — `onPress` should open whatever picker
  * the screen uses (a bottom sheet, list modal, etc.). Shows `value`, or the
  * muted `placeholder` when empty.
- *
- * Note: the chevron is a unicode glyph for now; A4 swaps in the svg icon set.
  */
 import React from 'react';
 import {Pressable, StyleSheet, ViewStyle} from 'react-native';
 import {AppText} from './Text';
+import {Icon} from './Icon';
 import {DukaanColors, Palette, Radii, Space} from '../../constants/theme';
 
 interface SelectProps {
@@ -49,9 +48,7 @@ export function Select({
         numberOfLines={1}>
         {hasValue ? value : placeholder}
       </AppText>
-      <AppText style={styles.chevron} color={Palette.slate[400]}>
-        ⌄
-      </AppText>
+      <Icon name="chevron-down" size={18} color={Palette.slate[400]} />
     </Pressable>
   );
 }
@@ -70,5 +67,4 @@ const styles = StyleSheet.create({
   pressed: {backgroundColor: Palette.slate[50]},
   disabled: {opacity: 0.5},
   value: {flex: 1, fontSize: 16, fontWeight: '600'},
-  chevron: {fontSize: 18, marginTop: -4},
 });

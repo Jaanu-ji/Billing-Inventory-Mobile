@@ -18,6 +18,9 @@ const profile: ShopProfile = {
   gstin: '23ABCDE1234F1Z5',
   state: 'Madhya Pradesh',
   stateCode: '23',
+  businessMode: 'product',
+  billingMode: null,
+  defaultUnit: null,
   createdAt: 1,
   updatedAt: 1,
 };
@@ -26,13 +29,17 @@ const item = (over: Partial<BillItem> = {}): BillItem => ({
   id: 1,
   billId: 1,
   productId: 10,
+  kind: 'product',
   name: 'Parle-G Biscuit',
   price: 10,
   quantity: 2,
+  unit: 'pcs',
   lineTotal: 20,
   gstRate: 0,
   hsnCode: null,
+  sacCode: null,
   gstAmount: 0,
+  attributes: {},
   ...over,
 });
 
@@ -52,6 +59,11 @@ const baseBill = (over: Partial<Bill> = {}): Bill => ({
   cgst: 0,
   sgst: 0,
   igst: 0,
+  discount: 0,
+  roundOff: 0,
+  paymentStatus: 'paid',
+  paymentMode: null,
+  customerId: null,
   items: [item()],
   ...over,
 });
@@ -197,6 +209,101 @@ describe('toSimpleBill — read-only GST→simple transform', () => {
   it('returns a non-GST bill unchanged', () => {
     const simple = baseBill();
     expect(toSimpleBill(simple)).toBe(simple);
+  });
+});
+
+describe('buildBillHtml — mixed bill (products + services) [C5]', () => {
+  const mixed = baseBill({
+    billType: 'gst',
+    subtotal: 300,
+    cgst: 18,
+    sgst: 18,
+    total: 336,
+    items: [
+      item({name: 'Cooking Oil', kind: 'product', price: 100, quantity: 1, lineTotal: 100, gstRate: 18, hsnCode: '1507', gstAmount: 18}),
+      item({name: 'Screen Repair', kind: 'service', price: 200, quantity: 1, lineTotal: 200, gstRate: 18, sacCode: '998713', gstAmount: 36}),
+    ],
+  });
+  const html = buildBillHtml(mixed, profile);
+
+  it('labels Products and Services sections', () => {
+    expect(html).toContain('Products');
+    expect(html).toContain('Services');
+  });
+
+  it('uses an HSN/SAC column and shows each line its own code', () => {
+    expect(html).toContain('HSN/SAC');
+    expect(html).toContain('1507'); // product HSN
+    expect(html).toContain('998713'); // service SAC
+  });
+
+  it('does NOT add section headers for a single-kind bill', () => {
+    const productsOnly = buildBillHtml(baseBill(), profile);
+    expect(productsOnly).not.toContain('Services');
+  });
+});
+
+describe('buildBillHtml — units [D]', () => {
+  it('shows quantity with unit for goods', () => {
+    const bill = baseBill({
+      items: [
+        item({
+          name: 'Loose rice',
+          price: 60,
+          quantity: 1.5,
+          unit: 'kg',
+          lineTotal: 90,
+        }),
+      ],
+    });
+    const html = buildBillHtml(bill, profile);
+    expect(html).toContain('1.5 kg');
+  });
+
+  it('keeps service quantity unit-less', () => {
+    const bill = baseBill({
+      items: [
+        item({
+          name: 'Screen Repair',
+          kind: 'service',
+          price: 200,
+          quantity: 1,
+          unit: 'pcs',
+          lineTotal: 200,
+          sacCode: '998713',
+        }),
+      ],
+    });
+    const html = buildBillHtml(bill, profile);
+    expect(html).toContain('Screen Repair');
+    expect(html).not.toContain('1 pcs');
+  });
+});
+
+describe('buildBillHtml — business-adaptive attributes [H]', () => {
+  const medical: ShopProfile = {...profile, shopType: 'medical'};
+
+  it('shows labelled batch/expiry under a medical bill line', () => {
+    const bill = baseBill({
+      items: [
+        item({
+          name: 'Crocin 500',
+          price: 30,
+          quantity: 1,
+          unit: 'strip',
+          lineTotal: 30,
+          attributes: {batch: 'DL2207', expiry: '12/26'},
+        }),
+      ],
+    });
+    const html = buildBillHtml(bill, medical);
+    expect(html).toContain('Batch no.: DL2207');
+    expect(html).toContain('Expiry: 12/26');
+  });
+
+  it('adds no attribute sub-line when the line carries none', () => {
+    const html = buildBillHtml(baseBill(), medical);
+    expect(html).not.toContain('class="attrs"');
   });
 });
 

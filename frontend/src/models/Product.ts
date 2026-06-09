@@ -21,6 +21,12 @@ export interface Product {
   gstRate: number;
   /** HSN/SAC code for GST compliance. Optional — may be null/blank. */
   hsnCode: string | null;
+  /** Selling unit code (pcs/kg/litre/...). Default 'pcs'. */
+  unit: string;
+  /** Free-text category/group (Phase H). Optional. */
+  category: string | null;
+  /** Business-adaptive extras (Phase H): batch/expiry, size/colour, … */
+  attributes: Record<string, string>;
   /** Unix epoch millis when the row was created. */
   createdAt: number;
 }
@@ -35,6 +41,11 @@ export interface NewProductInput {
   price: number;
   gstRate?: number;
   hsnCode?: string | null;
+  /** Selling unit; defaults to 'pcs' when omitted. */
+  unit?: string;
+  /** Category + business-adaptive attributes (Phase H). */
+  category?: string | null;
+  attributes?: Record<string, string>;
 }
 
 /** Fields that the user can edit after creation. */
@@ -43,6 +54,11 @@ export interface ProductUpdateInput {
   price: number;
   gstRate?: number;
   hsnCode?: string | null;
+  /** Selling unit; defaults to 'pcs' when omitted. */
+  unit?: string;
+  /** Category + business-adaptive attributes (Phase H). */
+  category?: string | null;
+  attributes?: Record<string, string>;
 }
 
 // Phase 3: add stock quantity, costPrice, category here.

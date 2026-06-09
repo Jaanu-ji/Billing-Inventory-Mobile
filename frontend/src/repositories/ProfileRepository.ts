@@ -1,7 +1,10 @@
 import {getDatabase} from '../db/database';
 import {Tables, ShopProfileColumns as SP} from '../db/schema';
+import {DEFAULT_BUSINESS_MODE, type BusinessMode} from '../constants/businessModes';
+import type {BillingMode} from '../constants/billingModes';
 import type {ShopProfile, ShopProfileInput} from '../models/ShopProfile';
 import type {IProfileRepository} from './IProfileRepository';
+import {SyncQueue} from '../services/sync/SyncQueue';
 
 /**
  * op-sqlite implementation of IProfileRepository.
@@ -21,6 +24,12 @@ class ProfileRepository implements IProfileRepository {
       gstin: row[SP.gstin] ?? null,
       state: row[SP.state] ?? null,
       stateCode: row[SP.stateCode] ?? null,
+      // Pre-v5 rows read back via the column default ('product').
+      businessMode: (row[SP.businessMode] ?? DEFAULT_BUSINESS_MODE) as BusinessMode,
+      // Pre-v10 rows (or never-chosen) read back null => app derives a default.
+      billingMode: (row[SP.billingMode] ?? null) as BillingMode | null,
+      // Pre-v15 rows read back null => new products fall back to 'pcs'.
+      defaultUnit: row[SP.defaultUnit] ?? null,
       createdAt: Number(row[SP.createdAt]),
       updatedAt: Number(row[SP.updatedAt]),
     };
@@ -48,12 +57,24 @@ class ProfileRepository implements IProfileRepository {
 
     const existing = await this.get();
 
+    // Keep the existing mode when an edit doesn't supply one; default for new.
+    const businessMode: BusinessMode =
+      input.businessMode ?? existing?.businessMode ?? DEFAULT_BUSINESS_MODE;
+    // Billing mode is owned by setBillingMode() (the billing screen), not the
+    // profile form — preserve it across a profile save; null for a new shop.
+    const billingMode: BillingMode | null = existing?.billingMode ?? null;
+    // Default selling unit for new products (Phase H). Keep the existing value
+    // when an edit omits it; null until chosen (=> 'pcs').
+    const defaultUnit: string | null =
+      input.defaultUnit ?? existing?.defaultUnit ?? null;
+
     if (existing) {
       await db.execute(
         `UPDATE ${Tables.shopProfile} SET
            ${SP.shopType} = ?, ${SP.shopName} = ?, ${SP.phone} = ?,
            ${SP.address} = ?, ${SP.gstEnabled} = ?, ${SP.gstin} = ?,
-           ${SP.state} = ?, ${SP.stateCode} = ?, ${SP.updatedAt} = ?
+           ${SP.state} = ?, ${SP.stateCode} = ?, ${SP.businessMode} = ?,
+           ${SP.billingMode} = ?, ${SP.defaultUnit} = ?, ${SP.updatedAt} = ?
          WHERE ${SP.id} = ?;`,
         [
           input.shopType,
@@ -64,10 +85,14 @@ class ProfileRepository implements IProfileRepository {
           gstin,
           state,
           stateCode,
+          businessMode,
+          billingMode,
+          defaultUnit,
           now,
           existing.id,
         ],
       );
+      SyncQueue.upsert('shop_profile', existing.id);
       return {
         ...existing,
         shopType: input.shopType,
@@ -78,6 +103,9 @@ class ProfileRepository implements IProfileRepository {
         gstin,
         state,
         stateCode,
+        businessMode,
+        billingMode,
+        defaultUnit,
         updatedAt: now,
       };
     }
@@ -86,8 +114,9 @@ class ProfileRepository implements IProfileRepository {
       `INSERT INTO ${Tables.shopProfile}
          (${SP.shopType}, ${SP.shopName}, ${SP.phone}, ${SP.address},
           ${SP.gstEnabled}, ${SP.gstin}, ${SP.state}, ${SP.stateCode},
+          ${SP.businessMode}, ${SP.billingMode}, ${SP.defaultUnit},
           ${SP.createdAt}, ${SP.updatedAt})
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         input.shopType,
         input.shopName.trim(),
@@ -97,12 +126,17 @@ class ProfileRepository implements IProfileRepository {
         gstin,
         state,
         stateCode,
+        businessMode,
+        billingMode,
+        defaultUnit,
         now,
         now,
       ],
     );
+    const id = Number(res.insertId);
+    SyncQueue.upsert('shop_profile', id);
     return {
-      id: Number(res.insertId),
+      id,
       shopType: input.shopType,
       shopName: input.shopName.trim(),
       phone: input.phone.trim(),
@@ -111,9 +145,27 @@ class ProfileRepository implements IProfileRepository {
       gstin,
       state,
       stateCode,
+      businessMode,
+      billingMode,
+      defaultUnit,
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  async setBillingMode(mode: BillingMode): Promise<void> {
+    const db = await getDatabase();
+    // Targeted single-column update on the one profile row — cheap, and keeps
+    // the rest of the profile untouched when the shopkeeper flips modes.
+    await db.execute(
+      `UPDATE ${Tables.shopProfile}
+         SET ${SP.billingMode} = ?, ${SP.updatedAt} = ?;`,
+      [mode, Date.now()],
+    );
+    const profile = await this.get();
+    if (profile) {
+      SyncQueue.upsert('shop_profile', profile.id);
+    }
   }
 }
 

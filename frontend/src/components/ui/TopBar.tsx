@@ -2,13 +2,12 @@
  * Top bar (spec §5.10). Padding 6×18×14, title in Sora 700/22 (tracking
  * -0.02em). Optional 44×44 back button (surface + hairline) and a trailing
  * `right` slot for actions.
- *
- * Back glyph is unicode for now; A4 swaps in the svg icon set.
  */
 import React from 'react';
 import {Pressable, StyleSheet, View, ViewStyle} from 'react-native';
 import {AppText} from './Text';
-import {DukaanColors, FontFamily} from '../../constants/theme';
+import {Icon} from './Icon';
+import {DukaanColors, fontFace} from '../../constants/theme';
 
 interface TopBarProps {
   title?: string;
@@ -26,9 +25,7 @@ export function TopBar({title, onBack, right, style}: TopBarProps): React.JSX.El
           accessibilityLabel="Back"
           onPress={onBack}
           style={({pressed}) => [styles.back, pressed && styles.backPressed]}>
-          <AppText style={styles.backGlyph} color={DukaanColors.ink}>
-            ‹
-          </AppText>
+          <Icon name="chevron-left" size={24} color={DukaanColors.ink} strokeWidth={2.2} />
         </Pressable>
       )}
       {title != null && (
@@ -62,9 +59,8 @@ const styles = StyleSheet.create({
     borderColor: DukaanColors.hairline,
   },
   backPressed: {backgroundColor: DukaanColors.hairline},
-  backGlyph: {fontSize: 28, lineHeight: 30, marginTop: -2},
   title: {
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', '700'),
     fontSize: 22,
     fontWeight: '700',
     letterSpacing: -0.44,

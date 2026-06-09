@@ -65,6 +65,9 @@ class FakeRepo implements IProductRepository {
       ...input,
       gstRate: input.gstRate ?? 0,
       hsnCode: input.hsnCode ?? null,
+      unit: input.unit ?? 'pcs',
+      category: input.category ?? null,
+      attributes: input.attributes ?? {},
       createdAt: Date.now(),
     };
     this.items.push(p);

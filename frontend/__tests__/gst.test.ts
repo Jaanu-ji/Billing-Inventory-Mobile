@@ -101,3 +101,64 @@ describe('calculateBillTotals — mixed rates, quantities and rounding', () => {
     expect(t.subtotal).toBe(100);
   });
 });
+
+describe('calculateBillTotals — discount + round-off (Phase G)', () => {
+  it('applies a percent discount on the payable', () => {
+    // simple bill, 200 payable, 10% off => save 20, total 180.
+    const t = calculateBillTotals([line({price: 100, quantity: 2})], '27', '27', false, {
+      discountType: 'percent',
+      discountValue: 10,
+    });
+    expect(t.subtotal).toBe(200);
+    expect(t.discount).toBe(20);
+    expect(t.total).toBe(180);
+  });
+
+  it('applies a flat rupee discount, clamped to the payable', () => {
+    const t = calculateBillTotals([line({price: 100, quantity: 1, gstRate: 0})], '27', '27', false, {
+      discountType: 'rupees',
+      discountValue: 250, // more than the bill => clamp to 100
+    });
+    expect(t.discount).toBe(100);
+    expect(t.total).toBe(0);
+  });
+
+  it('discounts the tax-inclusive payable on a GST bill', () => {
+    // 100 + 18 GST = 118 payable; 18% off 118 = 21.24; total 96.76.
+    const t = calculateBillTotals([line({price: 100, quantity: 1, gstRate: 18})], '27', '27', true, {
+      discountType: 'percent',
+      discountValue: 18,
+    });
+    expect(t.taxTotal).toBe(18);
+    expect(t.discount).toBe(21.24);
+    expect(t.total).toBe(96.76);
+  });
+
+  it('rounds the final total to the nearest rupee and reports the delta', () => {
+    // 103.95 payable, round-off => 104, delta +0.05.
+    const t = calculateBillTotals([{price: 99, quantity: 1, gstRate: 5}], '27', '27', true, {
+      roundOff: true,
+    });
+    expect(t.total).toBe(104);
+    expect(t.roundOff).toBeCloseTo(0.05, 2);
+  });
+
+  it('combines discount then round-off', () => {
+    // 200 payable, 10% off => 180, round-off keeps 180 (already whole).
+    const t = calculateBillTotals([line({price: 100, quantity: 2})], '27', '27', false, {
+      discountType: 'percent',
+      discountValue: 10,
+      roundOff: true,
+    });
+    expect(t.discount).toBe(20);
+    expect(t.roundOff).toBe(0);
+    expect(t.total).toBe(180);
+  });
+
+  it('no adjustments => discount and roundOff are zero (unchanged)', () => {
+    const t = calculateBillTotals([line({price: 100, quantity: 1, gstRate: 0})], '27', '27', false);
+    expect(t.discount).toBe(0);
+    expect(t.roundOff).toBe(0);
+    expect(t.total).toBe(100);
+  });
+});

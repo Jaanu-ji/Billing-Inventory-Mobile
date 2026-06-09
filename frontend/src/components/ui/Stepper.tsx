@@ -2,13 +2,13 @@
  * Quantity stepper (spec §5.7). Inline pill (bg slate-100), 34×34 round − / +
  * buttons on a white surface, qty shown in Sora 700/16 with tabular figures.
  * Decrement is disabled at `min`.
- *
- * Glyphs are unicode for now; A4 swaps in the svg icon set.
  */
 import React from 'react';
 import {Pressable, StyleSheet, View, ViewStyle} from 'react-native';
 import {AppText} from './Text';
+import {Icon} from './Icon';
 import {DukaanColors, Elevation, Palette} from '../../constants/theme';
+import {formatQuantity} from '../../utils/format';
 
 interface StepperProps {
   value: number;
@@ -38,13 +38,11 @@ export function Stepper({
           !canDec && styles.btnDisabled,
           pressed && canDec && styles.btnPressed,
         ]}>
-        <AppText style={styles.glyph} color={DukaanColors.ink}>
-          −
-        </AppText>
+        <Icon name="minus" size={18} color={DukaanColors.ink} strokeWidth={2.4} />
       </Pressable>
 
       <AppText style={styles.qty} numeric>
-        {value}
+        {formatQuantity(value)}
       </AppText>
 
       <Pressable
@@ -54,9 +52,7 @@ export function Stepper({
           styles.btn,
           pressed && !disabled && styles.btnPressed,
         ]}>
-        <AppText style={styles.glyph} color={DukaanColors.ink}>
-          +
-        </AppText>
+        <Icon name="plus" size={18} color={DukaanColors.ink} strokeWidth={2.4} />
       </Pressable>
     </View>
   );
@@ -81,7 +77,6 @@ const styles = StyleSheet.create({
   },
   btnPressed: {backgroundColor: Palette.slate[50]},
   btnDisabled: {opacity: 0.4},
-  glyph: {fontSize: 20, fontWeight: '700', lineHeight: 22},
   qty: {
     minWidth: 28,
     textAlign: 'center',

@@ -18,7 +18,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import {AppText} from './Text';
-import {DukaanColors, Elevation, FontFamily, Palette, Radii} from '../../constants/theme';
+import {DukaanColors, Elevation, fontFace, Palette, Radii} from '../../constants/theme';
 
 export type ButtonVariant =
   | 'primary'
@@ -149,7 +149,7 @@ export function Button({
           <AppText
             weight="700"
             color={v.text}
-            style={{fontFamily: FontFamily.ui, fontSize: s.font}}>
+            style={{fontFamily: fontFace('ui', '700'), fontSize: s.font}}>
             {title}
           </AppText>
           {right}

@@ -24,10 +24,13 @@ export type MainTabParamList = {
 
 /** Root stack: the tabs (`Main`) plus screens pushed above them. */
 export type RootStackParamList = {
+  Login: undefined; // Phase J: phone-OTP login gate (only when Config.auth.enabled)
   Setup: undefined; // Phase 2 Part 2: first-launch shop setup
   Main: NavigatorScreenParams<MainTabParamList> | undefined; // the bottom-tab app
   BillDetail: {billId: number}; // Phase 2: full view of one bill (pushed from Bills)
   Scan: undefined; // Phase 1: add/recognise products (pushed from Products)
+  Customers: undefined; // Phase F: udhaar ledger (pushed from Bills)
+  CustomerDetail: {customerId: number}; // Phase F: one customer's bills + clear udhaar
 };
 
 declare global {

@@ -8,11 +8,14 @@
  * without restructuring.
  */
 import React, {useEffect, useState} from 'react';
-import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
+import {ActivityIndicator, AppState, StyleSheet, Text, View} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {AppNavigator} from './src/navigation/AppNavigator';
 import {initDatabase} from './src/db/database';
 import {ProfileService} from './src/services/ProfileService';
+import {authService} from './src/services/AuthService';
+import {SyncController} from './src/services/sync/SyncController';
+import {Config} from './src/constants/config';
 import {DukaanColors, Space, Typography} from './src/constants/theme';
 import type {RootStackParamList} from './src/navigation/types';
 
@@ -25,17 +28,36 @@ function App(): React.JSX.Element {
   useEffect(() => {
     (async () => {
       await initDatabase();
-      // First launch (no profile) -> Setup; otherwise straight to the tabbed app
-      // (which opens on the Billing tab). If this lookup ever fails we still
-      // default to Main so the app never gets stuck on a blank screen.
+      // Decide the start route. With auth enabled (Phase J), an un-signed-in
+      // user lands on Login; once signed in (or when auth is disabled — the
+      // default during scaffolding, so behaviour is unchanged) we fall through
+      // to the usual first-launch routing: Setup (no profile) else Main.
+      // Any lookup failure defaults to Main so the app never gets stuck.
       try {
-        const hasProfile = await ProfileService.hasProfile();
-        setInitialRoute(hasProfile ? 'Main' : 'Setup');
+        if (Config.auth.enabled && !(await authService.getSession())) {
+          setInitialRoute('Login');
+        } else {
+          const hasProfile = await ProfileService.hasProfile();
+          setInitialRoute(hasProfile ? 'Main' : 'Setup');
+        }
       } catch {
         setInitialRoute('Main');
       }
       setReady(true);
+      // Kick a best-effort sync on launch (no-op unless sync is enabled +
+      // configured + signed in — never blocks the app).
+      SyncController.maybeSync();
     })().catch(e => setError(String(e?.message ?? e)));
+  }, []);
+
+  // Sync again whenever the app returns to the foreground (best-effort).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        SyncController.maybeSync();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   if (error) {

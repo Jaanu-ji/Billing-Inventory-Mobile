@@ -34,9 +34,22 @@ export interface LineTax {
   gstAmount: number;
 }
 
+/** How a bill-level discount is expressed (Phase G). */
+export type DiscountType = 'percent' | 'rupees';
+
+/** Optional bill-level adjustments applied after tax (Phase G). */
+export interface BillAdjustments {
+  /** Discount kind; omit for no discount. */
+  discountType?: DiscountType;
+  /** Percent (0–100) or rupees, per `discountType`. */
+  discountValue?: number;
+  /** Round the final payable to the nearest rupee. */
+  roundOff?: boolean;
+}
+
 /** Aggregated totals for a whole bill. */
 export interface BillTotals {
-  /** Sum of taxable values (price * qty across all lines). */
+  /** Sum of taxable values (price * qty across all lines), before discount. */
   subtotal: number;
   /** Central GST (intra-state bills only; 0 otherwise). */
   cgst: number;
@@ -46,7 +59,11 @@ export interface BillTotals {
   igst: number;
   /** cgst + sgst + igst. */
   taxTotal: number;
-  /** subtotal + taxTotal — the amount payable. */
+  /** Bill-level discount amount applied to the payable (Phase G; 0 if none). */
+  discount: number;
+  /** Round-off delta added to reach a whole-rupee total (Phase G; +/- or 0). */
+  roundOff: number;
+  /** subtotal + taxTotal − discount + roundOff — the amount payable. */
   total: number;
   /** True when the sale crosses state lines (=> IGST instead of CGST/SGST). */
   isInterState: boolean;
@@ -73,6 +90,7 @@ export function calculateBillTotals(
   shopStateCode: string | null,
   customerStateCode: string | null,
   isGstBill: boolean,
+  adjustments?: BillAdjustments,
 ): BillTotals {
   // Inter-state only when we actually have both codes and they differ.
   // No customer state => place of supply = shop's own state => intra-state.
@@ -112,7 +130,59 @@ export function calculateBillTotals(
   }
 
   const taxTotal = round2(cgst + sgst + igst);
-  const total = round2(subtotal + taxTotal);
 
-  return {subtotal, cgst, sgst, igst, taxTotal, total, isInterState, lines};
+  // Bill-level adjustments (Phase G), applied to the payable AFTER tax so the
+  // per-line taxable/GST figures stay clean. `payable` is what the customer owes
+  // before a discount; the discount reduces it, then round-off snaps to a rupee.
+  const payable = round2(subtotal + taxTotal);
+  const discount = computeDiscount(payable, adjustments);
+  const afterDiscount = round2(payable - discount);
+
+  let roundOff = 0;
+  let total = afterDiscount;
+  if (adjustments?.roundOff) {
+    const rounded = Math.round(afterDiscount);
+    roundOff = round2(rounded - afterDiscount);
+    total = rounded;
+  }
+
+  return {
+    subtotal,
+    cgst,
+    sgst,
+    igst,
+    taxTotal,
+    discount,
+    roundOff,
+    total,
+    isInterState,
+    lines,
+  };
+}
+
+/**
+ * Resolve a bill-level discount amount (Phase G). Percent is taken on the
+ * pre-discount payable; rupees is a flat amount. Either way it's clamped to
+ * [0, payable] so a bill can never go negative, and invalid input => 0.
+ */
+/** Public helper for previews (discount sheet / checkout "You save"). */
+export function discountAmount(
+  payable: number,
+  type: DiscountType,
+  value: number,
+): number {
+  return computeDiscount(payable, {discountType: type, discountValue: value});
+}
+
+function computeDiscount(payable: number, adj?: BillAdjustments): number {
+  if (!adj || adj.discountValue == null || !Number.isFinite(adj.discountValue)) {
+    return 0;
+  }
+  const value = adj.discountValue;
+  if (value <= 0) {
+    return 0;
+  }
+  const raw =
+    adj.discountType === 'rupees' ? value : (payable * Math.min(value, 100)) / 100;
+  return round2(Math.min(Math.max(raw, 0), payable));
 }

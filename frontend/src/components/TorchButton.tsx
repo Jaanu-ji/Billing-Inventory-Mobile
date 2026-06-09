@@ -1,6 +1,6 @@
 import React from 'react';
 import {StyleSheet, TouchableOpacity, ViewStyle} from 'react-native';
-import {AppText} from './ui';
+import {AppText, Icon} from './ui';
 import {DukaanColors, Palette} from '../constants/theme';
 
 interface Props {
@@ -22,7 +22,12 @@ export function TorchButton({on, onPress, style}: Props): React.JSX.Element {
       accessibilityRole="button"
       accessibilityLabel={on ? 'Turn flash off' : 'Turn flash on'}
       style={[styles.btn, on && styles.btnOn, style]}>
-      <AppText style={styles.icon}>🔦</AppText>
+      <Icon
+        name="flash"
+        size={15}
+        color={on ? Palette.slate[900] : '#FFFFFF'}
+        strokeWidth={2}
+      />
       <AppText
         variant="cap"
         weight="700"
@@ -50,5 +55,4 @@ const styles = StyleSheet.create({
     backgroundColor: DukaanColors.gold,
     borderColor: DukaanColors.gold,
   },
-  icon: {fontSize: 15},
 });

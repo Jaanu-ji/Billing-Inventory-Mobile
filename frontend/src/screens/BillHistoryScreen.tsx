@@ -1,10 +1,10 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useLayoutEffect, useState} from 'react';
 import {FlatList, Pressable, StyleSheet, View} from 'react-native';
 import {type CompositeScreenProps, useFocusEffect} from '@react-navigation/native';
 import type {BottomTabScreenProps} from '@react-navigation/bottom-tabs';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {billRepository} from '../repositories/BillRepository';
-import {AppText, Badge} from '../components/ui';
+import {AppText, Badge, Icon} from '../components/ui';
 import {formatPrice, formatDateTime} from '../utils/format';
 import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
 import type {Bill} from '../models/Bill';
@@ -20,6 +20,23 @@ type Props = CompositeScreenProps<
 export function BillHistoryScreen({navigation}: Props): React.JSX.Element {
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Header shortcut to the udhaar ledger (Phase F).
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => navigation.navigate('Customers')}
+          hitSlop={8}
+          style={styles.headerBtn}>
+          <Icon name="store" size={16} color={DukaanColors.primary} strokeWidth={2.2} />
+          <AppText variant="label" color={DukaanColors.primary}>
+            Udhaar
+          </AppText>
+        </Pressable>
+      ),
+    });
+  }, [navigation]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,29 +61,33 @@ export function BillHistoryScreen({navigation}: Props): React.JSX.Element {
         contentContainerStyle={styles.list}
         renderItem={({item}) => {
           const isGst = item.billType === 'gst';
+          const isUnpaid = item.paymentStatus === 'unpaid';
           return (
             <Pressable
               style={({pressed}) => [styles.card, pressed && styles.cardPressed]}
               onPress={() =>
                 navigation.navigate('BillDetail', {billId: item.id})
               }>
-              <View style={styles.rowTop}>
-                <AppText variant="h3">Bill #{item.billNumber}</AppText>
-                <AppText variant="h2" numeric>
-                  {formatPrice(item.total)}
+              <View style={styles.billIcon}>
+                <Icon name="receipt" size={18} color={DukaanColors.textMuted} />
+              </View>
+              <View style={styles.info}>
+                <View style={styles.titleRow}>
+                  <AppText variant="body" weight="700" numberOfLines={1} style={styles.title}>
+                    {item.customerName || 'Walk-in'}
+                  </AppText>
+                  {isGst ? <Badge variant="gst">GST</Badge> : null}
+                </View>
+                <AppText variant="cap" color={DukaanColors.textMuted} numberOfLines={1}>
+                  #{item.billNumber} · {formatDateTime(item.createdAt)}
                 </AppText>
               </View>
-              <View style={styles.rowBottom}>
-                <AppText
-                  variant="bodySm"
-                  color={DukaanColors.textMuted}
-                  numberOfLines={1}
-                  style={styles.meta}>
-                  {formatDateTime(item.createdAt)}
-                  {item.customerName ? ` · ${item.customerName}` : ''}
+              <View style={styles.right}>
+                <AppText variant="body" weight="800" numeric>
+                  {formatPrice(item.total)}
                 </AppText>
-                <Badge variant={isGst ? 'gst' : 'simple'}>
-                  {isGst ? 'GST' : 'Simple'}
+                <Badge variant={isUnpaid ? 'unpaid' : 'paid'} dot>
+                  {isUnpaid ? 'Udhaar' : 'Paid'}
                 </Badge>
               </View>
             </Pressable>
@@ -76,7 +97,7 @@ export function BillHistoryScreen({navigation}: Props): React.JSX.Element {
           !loading ? (
             <View style={styles.empty}>
               <View style={styles.emptyBadge}>
-                <AppText style={styles.emptyGlyph}>🧾</AppText>
+                <Icon name="receipt" size={30} color={DukaanColors.primary} />
               </View>
               <AppText variant="h3" center>
                 No bills yet
@@ -96,27 +117,30 @@ const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: DukaanColors.bg},
   list: {padding: Space.lg, flexGrow: 1},
   card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
     backgroundColor: DukaanColors.surface,
-    borderRadius: Radii.lg,
+    borderRadius: Radii.md,
     borderWidth: 1,
     borderColor: DukaanColors.hairline,
-    padding: Space.lg,
-    marginBottom: Space.md,
-    gap: Space.sm,
+    padding: Space.md,
+    marginBottom: Space.sm,
   },
   cardPressed: {backgroundColor: Palette.orange[50]},
-  rowTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  billIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.sm,
+    backgroundColor: Palette.slate[50],
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  rowBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Space.sm,
-  },
-  meta: {flex: 1},
+  info: {flex: 1, gap: 2},
+  titleRow: {flexDirection: 'row', alignItems: 'center', gap: Space.sm},
+  title: {flexShrink: 1},
+  right: {alignItems: 'flex-end', gap: 4},
+  headerBtn: {flexDirection: 'row', alignItems: 'center', gap: 4},
   empty: {
     flex: 1,
     alignItems: 'center',
@@ -133,5 +157,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Space.xs,
   },
-  emptyGlyph: {fontSize: 28},
 });

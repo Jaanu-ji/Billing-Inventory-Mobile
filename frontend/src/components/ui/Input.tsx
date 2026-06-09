@@ -18,7 +18,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import {AppText} from './Text';
-import {DukaanColors, FontFamily, Palette, Radii, Space} from '../../constants/theme';
+import {DukaanColors, fontFace, Palette, Radii, Space} from '../../constants/theme';
 
 interface FieldProps {
   label?: string;
@@ -146,10 +146,14 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     color: DukaanColors.ink,
-    fontFamily: FontFamily.ui,
+    fontFamily: fontFace('ui', '600'),
     fontWeight: '600',
     padding: 0,
   },
   textarea: {minHeight: 72},
-  prefix: {color: Palette.slate[400], fontWeight: '700'},
+  prefix: {
+    color: Palette.slate[400],
+    fontFamily: fontFace('ui', '700'),
+    fontWeight: '700',
+  },
 });

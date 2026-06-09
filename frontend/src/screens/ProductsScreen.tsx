@@ -1,5 +1,12 @@
 import React, {useCallback, useLayoutEffect, useMemo, useState} from 'react';
-import {Alert, FlatList, Pressable, StyleSheet, View} from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import {type CompositeScreenProps, useFocusEffect} from '@react-navigation/native';
 import type {BottomTabScreenProps} from '@react-navigation/bottom-tabs';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -8,7 +15,7 @@ import {
   ProductFormModal,
   type ProductFormSubmit,
 } from '../components/ProductFormModal';
-import {AppText, Input} from '../components/ui';
+import {AppText, Chip, Input, Icon} from '../components/ui';
 import {productRepository} from '../repositories/ProductRepository';
 import {ProfileService} from '../services/ProfileService';
 import {DukaanColors, Palette, Space} from '../constants/theme';
@@ -31,16 +38,24 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
   const [editing, setEditing] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
+  // Selected category filter (null = All). Phase H.
+  const [category, setCategory] = useState<string | null>(null);
   // Drives whether the edit form shows GST rate + HSN fields.
   const [gstEnabled, setGstEnabled] = useState(false);
+  // Drives the business-adaptive product fields (Phase H).
+  const [shopType, setShopType] = useState<string | null>(null);
 
   // Header shortcut to add products by scanning (Phase 1 Scan screen).
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable onPress={() => navigation.navigate('Scan')} hitSlop={8}>
+        <Pressable
+          onPress={() => navigation.navigate('Scan')}
+          hitSlop={8}
+          style={styles.headerBtn}>
+          <Icon name="plus" size={16} color={DukaanColors.primary} strokeWidth={2.4} />
           <AppText variant="label" color={DukaanColors.primary}>
-            ＋ Scan
+            Scan
           </AppText>
         </Pressable>
       ),
@@ -50,12 +65,13 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, gst] = await Promise.all([
+      const [list, profile] = await Promise.all([
         productRepository.getAll(),
-        ProfileService.isGstEnabled(),
+        ProfileService.getProfile(),
       ]);
       setProducts(list);
-      setGstEnabled(gst);
+      setGstEnabled(profile?.gstEnabled ?? false);
+      setShopType(profile?.shopType ?? null);
     } finally {
       setLoading(false);
     }
@@ -68,17 +84,38 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
     }, [load]),
   );
 
-  // Client-side filter by name or barcode.
+  // Distinct categories present in the catalog (sorted), for the filter chips.
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) {
+      const c = p.category?.trim();
+      if (c) {
+        set.add(c);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  // If the selected category disappears (e.g. last product deleted), ignore it.
+  const activeCategory =
+    category && categories.includes(category) ? category : null;
+
+  // Client-side filter by category, then name or barcode.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) {
-      return products;
-    }
-    return products.filter(
-      p =>
-        p.name.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q),
-    );
-  }, [products, query]);
+    return products.filter(p => {
+      if (activeCategory && p.category?.trim() !== activeCategory) {
+        return false;
+      }
+      if (!q) {
+        return true;
+      }
+      return (
+        p.name.toLowerCase().includes(q) ||
+        p.barcode.toLowerCase().includes(q)
+      );
+    });
+  }, [products, query, activeCategory]);
 
   const handleEditSave = async (values: ProductFormSubmit) => {
     if (!editing) {
@@ -91,6 +128,9 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
         price: values.price,
         gstRate: values.gstRate,
         hsnCode: values.hsnCode,
+        unit: values.unit,
+        category: values.category,
+        attributes: values.attributes,
       });
       setEditing(null);
       await load();
@@ -124,9 +164,33 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
           value={query}
           onChangeText={setQuery}
           placeholder="Search name or barcode"
-          prefix="🔍"
+          prefix={<Icon name="search" size={18} color={DukaanColors.textFaint} />}
         />
       </View>
+
+      {categories.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.filterRow}>
+          <Chip
+            label="All"
+            variant="primary"
+            active={activeCategory === null}
+            onPress={() => setCategory(null)}
+          />
+          {categories.map(c => (
+            <Chip
+              key={c}
+              label={c}
+              variant="primary"
+              active={activeCategory === c}
+              onPress={() => setCategory(c)}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
 
       <FlatList
         data={filtered}
@@ -145,7 +209,7 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
           !loading ? (
             <View style={styles.empty}>
               <View style={styles.emptyBadge}>
-                <AppText style={styles.emptyGlyph}>▦</AppText>
+                <Icon name="grid" size={30} color={DukaanColors.primary} />
               </View>
               <AppText variant="h3" center>
                 {query ? 'No matches' : 'No products yet'}
@@ -167,6 +231,10 @@ export function ProductsScreen({navigation}: Props): React.JSX.Element {
         initialPrice={editing?.price}
         initialGstRate={editing?.gstRate}
         initialHsnCode={editing?.hsnCode}
+        initialUnit={editing?.unit}
+        initialCategory={editing?.category}
+        initialAttributes={editing?.attributes}
+        shopType={shopType}
         showGst={gstEnabled}
         submitLabel="Save changes"
         saving={saving}
@@ -183,6 +251,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.lg,
     paddingTop: Space.md,
     paddingBottom: Space.sm,
+  },
+  filterRow: {
+    paddingHorizontal: Space.lg,
+    paddingBottom: Space.sm,
+    gap: Space.sm,
   },
   listContent: {
     paddingHorizontal: Space.lg,
@@ -206,5 +279,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Space.xs,
   },
-  emptyGlyph: {fontSize: 28, color: DukaanColors.primary},
+  headerBtn: {flexDirection: 'row', alignItems: 'center', gap: 4},
 });

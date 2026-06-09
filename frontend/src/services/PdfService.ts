@@ -19,7 +19,9 @@
 import {generatePDF} from 'react-native-html-to-pdf';
 import {Config} from '../constants/config';
 import {shopTypeLabel} from '../constants/shopTypes';
-import {formatDateTime} from '../utils/format';
+import {labelAttributes} from '../constants/productFields';
+import {formatDateTime, formatQuantity} from '../utils/format';
+import {unitLabel} from '../constants/units';
 import type {Bill, BillItem} from '../models/Bill';
 import type {ShopProfile} from '../models/ShopProfile';
 
@@ -50,15 +52,35 @@ function esc(value: string | null | undefined): string {
 }
 
 /** One row of the items table; GST columns are only rendered for a GST bill. */
-function itemRow(item: BillItem, index: number, isGst: boolean): string {
-  const hsn = isGst ? `<td class="c">${esc(item.hsnCode) || '-'}</td>` : '';
+function itemRow(
+  item: BillItem,
+  index: number,
+  isGst: boolean,
+  shopType: string | null | undefined,
+): string {
+  // Goods carry an HSN code, services a SAC code — show whichever this line has.
+  const code = isGst
+    ? `<td class="c">${esc(item.sacCode ?? item.hsnCode) || '-'}</td>`
+    : '';
   const rate = isGst ? `<td class="c">${item.gstRate}%</td>` : '';
+  const qty =
+    item.kind === 'service'
+      ? formatQuantity(item.quantity)
+      : `${formatQuantity(item.quantity)} ${unitLabel(item.unit)}`;
+  // Business-adaptive extras (Phase H): batch/expiry, size/colour, … shown as a
+  // small sub-line under the item name, only when the line carries any.
+  const attrs = labelAttributes(shopType, item.attributes);
+  const attrLine = attrs.length
+    ? `<div class="attrs">${attrs
+        .map(a => `${esc(a.label)}: ${esc(a.value)}`)
+        .join(' · ')}</div>`
+    : '';
   return `
     <tr>
       <td class="c">${index + 1}</td>
-      <td>${esc(item.name)}</td>
-      ${hsn}
-      <td class="c">${item.quantity}</td>
+      <td>${esc(item.name)}${attrLine}</td>
+      ${code}
+      <td class="c">${esc(qty)}</td>
       <td class="r">${inr(item.price)}</td>
       ${rate}
       <td class="r">${inr(item.lineTotal)}</td>
@@ -72,6 +94,8 @@ function itemRow(item: BillItem, index: number, isGst: boolean): string {
 export function buildBillHtml(bill: Bill, profile: ShopProfile | null): string {
   const isGst = bill.billType === 'gst';
   const items = bill.items ?? [];
+  // Shop type drives which business-adaptive attributes label on each line.
+  const shopType = profile?.shopType ?? null;
   // Place of supply: customer's state if captured, else the shop's own state.
   const placeOfSupply = bill.customerState ?? profile?.state ?? null;
 
@@ -114,12 +138,32 @@ export function buildBillHtml(bill: Bill, profile: ShopProfile | null): string {
 
   // ---- Items table head ----
   const headCols = isGst
-    ? `<th class="c">#</th><th>Item</th><th class="c">HSN</th>
+    ? `<th class="c">#</th><th>Item</th><th class="c">HSN/SAC</th>
        <th class="c">Qty</th><th class="r">Rate</th>
        <th class="c">GST</th><th class="r">Taxable</th>`
     : `<th class="c">#</th><th>Item</th>
        <th class="c">Qty</th><th class="r">Rate</th><th class="r">Amount</th>`;
-  const rows = items.map((it, i) => itemRow(it, i, isGst)).join('');
+
+  // ---- Items rows ----
+  // A mixed bill (goods + services) is split into labelled sections; a
+  // single-kind bill renders as one plain list (unchanged look).
+  const totalCols = isGst ? 7 : 5;
+  const goods = items.filter(it => it.kind !== 'service');
+  const services = items.filter(it => it.kind === 'service');
+  const isMixed = goods.length > 0 && services.length > 0;
+
+  let rows: string;
+  if (isMixed) {
+    let n = 0;
+    const section = (label: string, list: BillItem[]): string => {
+      const head = `<tr class="section"><td colspan="${totalCols}">${label}</td></tr>`;
+      const body = list.map(it => itemRow(it, n++, isGst, shopType)).join('');
+      return head + body;
+    };
+    rows = section('Products', goods) + section('Services', services);
+  } else {
+    rows = items.map((it, i) => itemRow(it, i, isGst, shopType)).join('');
+  }
   const colSpan = isGst ? 6 : 4;
 
   // ---- Totals ----
@@ -142,6 +186,22 @@ export function buildBillHtml(bill: Bill, profile: ShopProfile | null): string {
     totalRows.push(
       `<tr><td class="r tlabel" colspan="${colSpan}">IGST</td><td class="r">${inr(
         bill.igst,
+      )}</td></tr>`,
+    );
+  }
+  // Bill-level discount + round-off (Phase G), shown only when present.
+  if (bill.discount > 0) {
+    totalRows.push(
+      `<tr><td class="r tlabel" colspan="${colSpan}">Discount</td><td class="r">- ${inr(
+        bill.discount,
+      )}</td></tr>`,
+    );
+  }
+  if (bill.roundOff !== 0) {
+    const sign = bill.roundOff > 0 ? '+ ' : '- ';
+    totalRows.push(
+      `<tr><td class="r tlabel" colspan="${colSpan}">Round off</td><td class="r">${sign}${inr(
+        Math.abs(bill.roundOff),
       )}</td></tr>`,
     );
   }
@@ -192,6 +252,10 @@ export function buildBillHtml(bill: Bill, profile: ShopProfile | null): string {
                    border-bottom: 2px solid #E2E8F0; font-size: 10px;
                    text-transform: uppercase; letter-spacing: 0.6px; color: #64748B; }
   table.items td { padding: 10px 8px; border-bottom: 1px solid #EAEEF3; }
+  table.items tr.section td { background: #FFF7ED; color: #9A3412; font-weight: 800;
+    text-transform: uppercase; font-size: 10px; letter-spacing: 0.8px; padding: 8px;
+    border-bottom: 1px solid #E2E8F0; }
+  .attrs { color: #94A3B8; font-size: 10px; margin-top: 2px; }
   .c { text-align: center; }
   .r { text-align: right; }
   .tlabel { color: #64748B; border-bottom: none; font-weight: 600; }

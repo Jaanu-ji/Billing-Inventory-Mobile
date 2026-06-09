@@ -1,5 +1,5 @@
 import React from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import {Pressable, StyleSheet, View} from 'react-native';
 import {
   DefaultTheme,
   NavigationContainer,
@@ -10,6 +10,7 @@ import {
   createBottomTabNavigator,
   type BottomTabBarButtonProps,
 } from '@react-navigation/bottom-tabs';
+import {LoginScreen} from '../screens/LoginScreen';
 import {SetupScreen} from '../screens/SetupScreen';
 import {HomeScreen} from '../screens/HomeScreen';
 import {BillingScreen} from '../screens/BillingScreen';
@@ -18,7 +19,10 @@ import {BillDetailScreen} from '../screens/BillDetailScreen';
 import {SettingsScreen} from '../screens/SettingsScreen';
 import {ScanScreen} from '../screens/ScanScreen';
 import {ProductsScreen} from '../screens/ProductsScreen';
-import {DukaanColors, FontFamily} from '../constants/theme';
+import {CustomersScreen} from '../screens/CustomersScreen';
+import {CustomerDetailScreen} from '../screens/CustomerDetailScreen';
+import {DukaanColors, fontFace} from '../constants/theme';
+import {Icon, type IconName} from '../components/ui';
 import type {MainTabParamList, RootStackParamList} from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -44,15 +48,15 @@ const headerStyles = {
   headerTitleStyle: {
     fontWeight: '700' as const,
     color: DukaanColors.ink,
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', '700'),
   },
   headerShadowVisible: false,
 };
 
-/** Simple emoji tab icon — svg line-icon set replaces these in a later step. */
-function tabIcon(glyph: string) {
+/** Bottom-tab icon from the DUKAAN line-icon set (A4). */
+function tabIcon(name: IconName) {
   return ({color}: {color: string}) => (
-    <Text style={[styles.tabIcon, {color}]}>{glyph}</Text>
+    <Icon name={name} color={color} size={24} strokeWidth={2} />
   );
 }
 
@@ -74,10 +78,7 @@ function ScanFab({onPress, accessibilityState}: BottomTabBarButtonProps): React.
           focused && styles.fabActive,
           pressed && styles.fabPressed,
         ]}>
-        {/* Minimal white "scan" glyph drawn with Views (no icon dep yet). */}
-        <View style={styles.scanFrame}>
-          <View style={styles.scanLaser} />
-        </View>
+        <Icon name="scan" color="#FFFFFF" size={28} strokeWidth={2.2} />
       </Pressable>
     </View>
   );
@@ -104,12 +105,12 @@ function MainTabs(): React.JSX.Element {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
-        options={{title: 'Dukaan', tabBarLabel: 'Home', tabBarIcon: tabIcon('⌂')}}
+        options={{title: 'Dukaan', tabBarLabel: 'Home', tabBarIcon: tabIcon('home')}}
       />
       <Tab.Screen
         name="Products"
         component={ProductsScreen}
-        options={{title: 'Products', tabBarLabel: 'Products', tabBarIcon: tabIcon('▦')}}
+        options={{title: 'Products', tabBarLabel: 'Products', tabBarIcon: tabIcon('grid')}}
       />
       <Tab.Screen
         name="Billing"
@@ -123,12 +124,12 @@ function MainTabs(): React.JSX.Element {
       <Tab.Screen
         name="BillHistory"
         component={BillHistoryScreen}
-        options={{title: 'Bills', tabBarLabel: 'Bills', tabBarIcon: tabIcon('🧾')}}
+        options={{title: 'Bills', tabBarLabel: 'Bills', tabBarIcon: tabIcon('receipt')}}
       />
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
-        options={{title: 'Settings', tabBarLabel: 'Settings', tabBarIcon: tabIcon('⚙')}}
+        options={{title: 'Settings', tabBarLabel: 'Settings', tabBarIcon: tabIcon('settings')}}
       />
     </Tab.Navigator>
   );
@@ -154,9 +155,14 @@ export function AppNavigator({initialRouteName}: Props): React.JSX.Element {
           contentStyle: {backgroundColor: DukaanColors.bg},
         }}>
         <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{headerShown: false, gestureEnabled: false}}
+        />
+        <Stack.Screen
           name="Setup"
           component={SetupScreen}
-          options={{title: 'Shop Setup', headerBackVisible: false, gestureEnabled: false}}
+          options={{headerShown: false, gestureEnabled: false}}
         />
         <Stack.Screen
           name="Main"
@@ -173,13 +179,22 @@ export function AppNavigator({initialRouteName}: Props): React.JSX.Element {
           component={ScanScreen}
           options={{title: 'Scan Product'}}
         />
+        <Stack.Screen
+          name="Customers"
+          component={CustomersScreen}
+          options={{title: 'Customers'}}
+        />
+        <Stack.Screen
+          name="CustomerDetail"
+          component={CustomerDetailScreen}
+          options={{title: 'Customer'}}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  tabIcon: {fontSize: 22},
   tabBar: {
     height: 84,
     paddingTop: 10,
@@ -217,18 +232,4 @@ const styles = StyleSheet.create({
   },
   fabActive: {backgroundColor: DukaanColors.primaryPress},
   fabPressed: {transform: [{scale: 0.96}]},
-  scanFrame: {
-    width: 24,
-    height: 22,
-    borderWidth: 2.5,
-    borderColor: '#FFFFFF',
-    borderRadius: 7,
-    justifyContent: 'center',
-  },
-  scanLaser: {
-    height: 2.5,
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 3,
-    borderRadius: 2,
-  },
 });

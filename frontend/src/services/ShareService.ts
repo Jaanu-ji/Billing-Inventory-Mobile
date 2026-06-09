@@ -54,6 +54,7 @@ export function toSimpleBill(bill: Bill): Bill {
       lineTotal: inclTotal,
       gstRate: 0,
       hsnCode: null,
+      sacCode: null,
       gstAmount: 0,
     };
   });

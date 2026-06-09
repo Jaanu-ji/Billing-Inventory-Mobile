@@ -8,18 +8,22 @@ import {
   View,
 } from 'react-native';
 import {AppText, RowThumb, Stepper} from './ui';
-import {DukaanColors, FontFamily, Palette, Radii, Space} from '../constants/theme';
-import {formatPrice} from '../utils/format';
+import {DukaanColors, fontFace, Palette, Radii, Space} from '../constants/theme';
+import {formatPrice, formatQuantity} from '../utils/format';
+import {unitAllowsDecimal, unitLabel, unitStep} from '../constants/units';
 import {CartService} from '../services/CartService';
 import type {CartItem} from '../models/Bill';
 
 interface Props {
   item: CartItem;
-  onIncrement: (barcode: string) => void;
-  onDecrement: (barcode: string) => void;
-  onRemove: (barcode: string) => void;
+  /** Increment/decrement by the line's unit step (1 for counted, e.g. 0.5 kg). */
+  onIncrement: (key: string, step: number) => void;
+  onDecrement: (key: string, step: number) => void;
+  onRemove: (key: string) => void;
   /** Inline unit-price edit (commits the new price for this cart line). */
-  onPriceChange?: (barcode: string, price: number) => void;
+  onPriceChange?: (key: string, price: number) => void;
+  /** Exact decimal quantity entry (commits the new qty for this cart line). */
+  onQuantityChange?: (key: string, quantity: number) => void;
 }
 
 const REVEAL = 92; // px of red "remove" action revealed behind the card
@@ -48,15 +52,26 @@ export function CartItemRow({
   onDecrement,
   onRemove,
   onPriceChange,
+  onQuantityChange,
 }: Props): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [priceText, setPriceText] = useState('');
+  const [editingQty, setEditingQty] = useState(false);
+  const [qtyText, setQtyText] = useState('');
+
+  // Unit context for this line. Services are per-job — hide the unit there.
+  const step = unitStep(item.unit);
+  const showUnit = item.kind !== 'service';
+  const unitLbl = unitLabel(item.unit);
+  // Only measured units (kg/litre/...) need exact decimal entry; counted units
+  // are fine with the stepper alone.
+  const canEditQty = showUnit && unitAllowsDecimal(item.unit) && !!onQuantityChange;
 
   const translateX = useRef(new Animated.Value(0)).current;
   // Latest callback/identity, so the PanResponder (created once) never goes
   // stale and a price edit can suspend swiping.
-  const live = useRef({onRemove, barcode: item.barcode, editing});
-  live.current = {onRemove, barcode: item.barcode, editing};
+  const live = useRef({onRemove, key: item.key, editing: editing || editingQty});
+  live.current = {onRemove, key: item.key, editing: editing || editingQty};
 
   const pan = useRef(
     PanResponder.create({
@@ -76,7 +91,7 @@ export function CartItemRow({
             toValue: -600,
             duration: 160,
             useNativeDriver: true,
-          }).start(() => live.current.onRemove(live.current.barcode));
+          }).start(() => live.current.onRemove(live.current.key));
         } else {
           Animated.spring(translateX, {
             toValue: 0,
@@ -95,10 +110,31 @@ export function CartItemRow({
   const commitEdit = () => {
     const v = parseFloat(priceText.replace(/[^\d.]/g, ''));
     if (!Number.isNaN(v) && v >= 0) {
-      onPriceChange?.(item.barcode, v);
+      onPriceChange?.(item.key, v);
     }
     setEditing(false);
   };
+
+  const startQtyEdit = () => {
+    setQtyText(formatQuantity(item.quantity));
+    setEditingQty(true);
+  };
+  const commitQtyEdit = () => {
+    const v = parseFloat(qtyText.replace(/[^\d.]/g, ''));
+    if (!Number.isNaN(v) && v > 0) {
+      onQuantityChange?.(item.key, v);
+    }
+    setEditingQty(false);
+  };
+
+  const kindPrefix =
+    item.kind === 'manual' ? 'Manual · ' : item.kind === 'service' ? 'Service · ' : '';
+  const qtyTextLabel = showUnit
+    ? `${formatQuantity(item.quantity)} ${unitLbl}`
+    : formatQuantity(item.quantity);
+  const rateTextLabel = showUnit
+    ? `${formatPrice(item.price)} / ${unitLbl}`
+    : formatPrice(item.price);
 
   return (
     <View style={styles.wrap}>
@@ -134,16 +170,48 @@ export function CartItemRow({
                 style={styles.priceInput}
               />
               <AppText variant="cap" color={DukaanColors.textMuted}>
-                each
+                {showUnit ? `/ ${unitLbl}` : 'each'}
               </AppText>
             </View>
           ) : (
             <Pressable onPress={startEdit} hitSlop={6}>
               <AppText variant="bodySm" color={DukaanColors.textMuted}>
-                {formatPrice(item.price)} each ·{' '}
+                {kindPrefix}
+                {rateTextLabel} ·{' '}
                 <AppText variant="cap" color={DukaanColors.primary}>
-                  edit
+                  edit price
                 </AppText>
+              </AppText>
+            </Pressable>
+          )}
+          {editingQty ? (
+            <View style={styles.qtyEdit}>
+              <TextInput
+                value={qtyText}
+                onChangeText={setQtyText}
+                onBlur={commitQtyEdit}
+                onSubmitEditing={commitQtyEdit}
+                keyboardType="decimal-pad"
+                autoFocus
+                selectTextOnFocus
+                style={styles.qtyInput}
+              />
+              <AppText variant="cap" color={DukaanColors.textMuted}>
+                {unitLbl}
+              </AppText>
+            </View>
+          ) : (
+            <Pressable
+              onPress={canEditQty ? startQtyEdit : undefined}
+              disabled={!canEditQty}
+              hitSlop={6}>
+              <AppText variant="bodySm" color={DukaanColors.textMuted}>
+                Qty {qtyTextLabel}
+                {canEditQty ? (
+                  <AppText variant="cap" color={DukaanColors.primary}>
+                    {' '}· edit qty
+                  </AppText>
+                ) : null}
               </AppText>
             </Pressable>
           )}
@@ -156,8 +224,8 @@ export function CartItemRow({
           <Stepper
             value={item.quantity}
             min={0}
-            onDecrement={() => onDecrement(item.barcode)}
-            onIncrement={() => onIncrement(item.barcode)}
+            onDecrement={() => onDecrement(item.key, step)}
+            onIncrement={() => onIncrement(item.key, step)}
           />
         </View>
       </Animated.View>
@@ -196,6 +264,7 @@ const styles = StyleSheet.create({
   name: {fontSize: 15.5, fontWeight: '700', color: DukaanColors.ink},
   right: {alignItems: 'flex-end', gap: 8},
   priceEdit: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  qtyEdit: {flexDirection: 'row', alignItems: 'center', gap: 4},
   priceInput: {
     minWidth: 56,
     paddingVertical: 2,
@@ -205,7 +274,20 @@ const styles = StyleSheet.create({
     borderColor: DukaanColors.primary,
     backgroundColor: Palette.orange[50],
     color: DukaanColors.ink,
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', '700'),
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  qtyInput: {
+    minWidth: 56,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: Radii.xs,
+    borderWidth: 1.5,
+    borderColor: DukaanColors.primary,
+    backgroundColor: Palette.orange[50],
+    color: DukaanColors.ink,
+    fontFamily: fontFace('display', '700'),
     fontWeight: '700',
     fontSize: 14,
   },

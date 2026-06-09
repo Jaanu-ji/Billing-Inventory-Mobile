@@ -4,6 +4,13 @@ import {
   BillColumns as B,
   BillItemColumns as BI,
   ShopProfileColumns as SP,
+  ManualItemColumns as MI,
+  ServiceColumns as SV,
+  CustomerColumns as CU,
+  ParkedBillColumns as PB,
+  AuthSessionColumns as AS,
+  SyncQueueColumns as SQ,
+  SyncMetaColumns as SM,
 } from './schema';
 
 /**
@@ -182,7 +189,300 @@ export const MIGRATIONS: Migration[] = [
     },
   },
 
-  // Phase 3: { version: 5, name: 'create_inventory', up: ... }
+  {
+    version: 5,
+    name: 'add_business_mode',
+    up: async tx => {
+      // Phase C1: what the shop sells, driving the default billing flow later
+      // (Phase C6). Additive ADD COLUMN with a safe default so every existing
+      // profile reads back as a 'product' business — unchanged behaviour.
+      await tx.execute(
+        `ALTER TABLE ${Tables.shopProfile}
+           ADD COLUMN ${SP.businessMode} TEXT NOT NULL DEFAULT 'product';`,
+      );
+    },
+  },
+
+  {
+    version: 6,
+    name: 'create_manual_items_and_item_kind',
+    up: async tx => {
+      // Phase C3: a small catalog of reusable no-barcode goods, so the manual
+      // add modal can offer "reuse" of items typed before. Independent of
+      // `products` (no barcode).
+      await tx.execute(
+        `CREATE TABLE IF NOT EXISTS ${Tables.manualItems} (
+           ${MI.id}        INTEGER PRIMARY KEY AUTOINCREMENT,
+           ${MI.name}      TEXT NOT NULL,
+           ${MI.price}     REAL NOT NULL,
+           ${MI.hsnCode}   TEXT,
+           ${MI.gstRate}   REAL NOT NULL DEFAULT 0,
+           ${MI.createdAt} INTEGER NOT NULL,
+           ${MI.updatedAt} INTEGER NOT NULL
+         );`,
+      );
+      // Reuse-lookup is by (case-insensitive) name — index it.
+      await tx.execute(
+        `CREATE INDEX IF NOT EXISTS idx_${Tables.manualItems}_${MI.name}
+           ON ${Tables.manualItems} (${MI.name});`,
+      );
+
+      // Tag each saved bill line with what it is. Existing rows are products.
+      await tx.execute(
+        `ALTER TABLE ${Tables.billItems}
+           ADD COLUMN ${BI.itemKind} TEXT NOT NULL DEFAULT 'product';`,
+      );
+    },
+  },
+
+  {
+    version: 7,
+    name: 'create_services',
+    up: async tx => {
+      // Phase C4: saved services for the quick-pick on a service line. Like a
+      // product but with a SAC code instead of a barcode/HSN.
+      await tx.execute(
+        `CREATE TABLE IF NOT EXISTS ${Tables.services} (
+           ${SV.id}        INTEGER PRIMARY KEY AUTOINCREMENT,
+           ${SV.name}      TEXT NOT NULL,
+           ${SV.price}     REAL NOT NULL,
+           ${SV.sacCode}   TEXT,
+           ${SV.gstRate}   REAL NOT NULL DEFAULT 0,
+           ${SV.createdAt} INTEGER NOT NULL,
+           ${SV.updatedAt} INTEGER NOT NULL
+         );`,
+      );
+      await tx.execute(
+        `CREATE INDEX IF NOT EXISTS idx_${Tables.services}_${SV.name}
+           ON ${Tables.services} (${SV.name});`,
+      );
+    },
+  },
+
+  {
+    version: 8,
+    name: 'add_bill_item_sac_code',
+    up: async tx => {
+      // Phase C4: SAC code snapshot for service lines (HSN is for goods).
+      await tx.execute(
+        `ALTER TABLE ${Tables.billItems} ADD COLUMN ${BI.sacCode} TEXT;`,
+      );
+    },
+  },
+
+  {
+    version: 9,
+    name: 'add_units',
+    up: async tx => {
+      // Phase D: a selling unit on goods. Additive ADD COLUMN with a safe
+      // default so every product/manual item/bill line saved before this
+      // migration reads back as 'pcs' — unchanged behaviour. `quantity` is
+      // already REAL (migration v2), so decimal quantities need no schema change.
+      // Services carry no unit (per-job), so `services` is intentionally left out.
+      await tx.execute(
+        `ALTER TABLE ${Tables.products} ADD COLUMN ${C.unit} TEXT NOT NULL DEFAULT 'pcs';`,
+      );
+      await tx.execute(
+        `ALTER TABLE ${Tables.billItems} ADD COLUMN ${BI.unit} TEXT NOT NULL DEFAULT 'pcs';`,
+      );
+      await tx.execute(
+        `ALTER TABLE ${Tables.manualItems} ADD COLUMN ${MI.unit} TEXT NOT NULL DEFAULT 'pcs';`,
+      );
+    },
+  },
+
+  {
+    version: 10,
+    name: 'add_billing_mode',
+    up: async tx => {
+      // Phase E: the shop's remembered billing mode (scan/list/service/mixed).
+      // Nullable — a NULL means "not chosen yet", so the app derives a default
+      // from `business_mode`. Switching modes on the billing screen writes here,
+      // so the next bill opens the same way. Existing profiles read back NULL =>
+      // unchanged behaviour (derive from business_mode).
+      await tx.execute(
+        `ALTER TABLE ${Tables.shopProfile} ADD COLUMN ${SP.billingMode} TEXT;`,
+      );
+    },
+  },
+
+  {
+    version: 11,
+    name: 'create_customers',
+    up: async tx => {
+      // Phase F: saved customers for the udhaar (pending) ledger. Identified by
+      // phone so a returning customer reuses the same row and their unpaid bills
+      // accumulate against them.
+      await tx.execute(
+        `CREATE TABLE IF NOT EXISTS ${Tables.customers} (
+           ${CU.id}        INTEGER PRIMARY KEY AUTOINCREMENT,
+           ${CU.name}      TEXT NOT NULL,
+           ${CU.phone}     TEXT NOT NULL,
+           ${CU.createdAt} INTEGER NOT NULL,
+           ${CU.updatedAt} INTEGER NOT NULL
+         );`,
+      );
+      // Reuse-lookup + dedupe is by phone — index it.
+      await tx.execute(
+        `CREATE INDEX IF NOT EXISTS idx_${Tables.customers}_${CU.phone}
+           ON ${Tables.customers} (${CU.phone});`,
+      );
+    },
+  },
+
+  {
+    version: 12,
+    name: 'add_bill_payment',
+    up: async tx => {
+      // Phase F: payment status + mode + customer link on each bill. Existing
+      // bills were all completed sales, so they default to 'paid' (no udhaar)
+      // with no mode and no linked customer — unchanged history.
+      await tx.execute(
+        `ALTER TABLE ${Tables.bills}
+           ADD COLUMN ${B.paymentStatus} TEXT NOT NULL DEFAULT 'paid';`,
+      );
+      await tx.execute(
+        `ALTER TABLE ${Tables.bills} ADD COLUMN ${B.paymentMode} TEXT;`,
+      );
+      // Nullable link to a saved customer (a walk-in cash sale has none).
+      await tx.execute(
+        `ALTER TABLE ${Tables.bills} ADD COLUMN ${B.customerId} INTEGER;`,
+      );
+      // Ledger queries fetch a customer's bills by customer_id — index it.
+      await tx.execute(
+        `CREATE INDEX IF NOT EXISTS idx_${Tables.bills}_${B.customerId}
+           ON ${Tables.bills} (${B.customerId});`,
+      );
+    },
+  },
+
+  {
+    version: 13,
+    name: 'add_bill_discount_roundoff',
+    up: async tx => {
+      // Phase G: bill-level discount + round-off, stored as amounts on the bill.
+      // Existing bills had neither, so both default to 0 — totals unchanged.
+      await tx.execute(
+        `ALTER TABLE ${Tables.bills} ADD COLUMN ${B.discount} REAL NOT NULL DEFAULT 0;`,
+      );
+      await tx.execute(
+        `ALTER TABLE ${Tables.bills} ADD COLUMN ${B.roundOff} REAL NOT NULL DEFAULT 0;`,
+      );
+    },
+  },
+
+  {
+    version: 14,
+    name: 'create_parked_bills',
+    up: async tx => {
+      // Phase G: held/parked in-progress bills so the counter can serve another
+      // customer and resume later. The cart is stored as JSON (CartItem[]); a
+      // resume parses it back and deletes the row.
+      await tx.execute(
+        `CREATE TABLE IF NOT EXISTS ${Tables.parkedBills} (
+           ${PB.id}        INTEGER PRIMARY KEY AUTOINCREMENT,
+           ${PB.label}     TEXT NOT NULL,
+           ${PB.itemCount} REAL NOT NULL,
+           ${PB.total}     REAL NOT NULL,
+           ${PB.itemsJson} TEXT NOT NULL,
+           ${PB.createdAt} INTEGER NOT NULL
+         );`,
+      );
+    },
+  },
+
+  {
+    version: 15,
+    name: 'add_product_adaptive_fields',
+    up: async tx => {
+      // Phase H: business-adaptive product fields. `category` + a free-form JSON
+      // `attributes` blob (medical batch/expiry, garment size/colour, …) so the
+      // product form can adapt per shop type without a column per business.
+      // `default_unit` on the profile seeds the unit for new products.
+      // All additive + nullable, so existing rows are unaffected.
+      await tx.execute(
+        `ALTER TABLE ${Tables.products} ADD COLUMN ${C.category} TEXT;`,
+      );
+      await tx.execute(
+        `ALTER TABLE ${Tables.products} ADD COLUMN ${C.attributes} TEXT;`,
+      );
+      await tx.execute(
+        `ALTER TABLE ${Tables.shopProfile} ADD COLUMN ${SP.defaultUnit} TEXT;`,
+      );
+    },
+  },
+
+  {
+    version: 16,
+    name: 'add_bill_item_attributes',
+    up: async tx => {
+      // Phase H: snapshot the product's business-adaptive attributes (medical
+      // batch/expiry, garment size/colour, …) onto the bill line as a JSON blob,
+      // so the saved bill / invoice can show them and a later product edit never
+      // changes a past bill. Additive + nullable — existing lines read back null
+      // (=> no attributes), unchanged behaviour.
+      await tx.execute(
+        `ALTER TABLE ${Tables.billItems} ADD COLUMN ${BI.attributes} TEXT;`,
+      );
+    },
+  },
+
+  {
+    version: 17,
+    name: 'create_auth_session',
+    up: async tx => {
+      // Phase J: the persisted login session (single row, like shop_profile).
+      // Lets the shopkeeper stay signed in across launches so billing keeps
+      // working fully offline after the one-time phone-OTP login. `user_id` is
+      // also the owner key that Phase K sync will tag every cloud row with.
+      await tx.execute(
+        `CREATE TABLE IF NOT EXISTS ${Tables.authSession} (
+           ${AS.id}          INTEGER PRIMARY KEY AUTOINCREMENT,
+           ${AS.userId}      TEXT NOT NULL,
+           ${AS.phone}       TEXT NOT NULL,
+           ${AS.displayName} TEXT,
+           ${AS.signedInAt}  INTEGER NOT NULL
+         );`,
+      );
+    },
+  },
+
+  {
+    version: 18,
+    name: 'create_sync_outbox',
+    up: async tx => {
+      // Phase K: the cloud-sync OUTBOX. Every local write to a synced table
+      // appends (table, row_id, op) here; the SyncEngine drains it to Supabase
+      // when online + configured. Local DB stays the source of truth, so billing
+      // never waits on the network. The op's payload is fetched live from the
+      // table at push time (so repeated edits coalesce to the latest state).
+      await tx.execute(
+        `CREATE TABLE IF NOT EXISTS ${Tables.syncQueue} (
+           ${SQ.id}        INTEGER PRIMARY KEY AUTOINCREMENT,
+           ${SQ.tableName} TEXT NOT NULL,
+           ${SQ.rowId}     INTEGER NOT NULL,
+           ${SQ.op}        TEXT NOT NULL,
+           ${SQ.createdAt} INTEGER NOT NULL,
+           ${SQ.attempts}  INTEGER NOT NULL DEFAULT 0
+         );`,
+      );
+      // Fast lookup of pending ops per table/row (used by push + pull-skip).
+      await tx.execute(
+        `CREATE INDEX IF NOT EXISTS idx_${Tables.syncQueue}_target
+           ON ${Tables.syncQueue} (${SQ.tableName}, ${SQ.rowId});`,
+      );
+      // Per-table pull cursor: the cloud updated_at of the newest row we've
+      // already pulled, so each pull only fetches what changed since.
+      await tx.execute(
+        `CREATE TABLE IF NOT EXISTS ${Tables.syncMeta} (
+           ${SM.tableName}    TEXT PRIMARY KEY,
+           ${SM.lastPulledAt} INTEGER NOT NULL DEFAULT 0
+         );`,
+      );
+    },
+  },
+
+  // Phase 3 stock: { version: N, name: 'add_product_stock', up: ... }
 ];
 
 /**

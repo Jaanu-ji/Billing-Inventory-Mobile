@@ -3,9 +3,15 @@ import {ScrollView, StyleSheet, View} from 'react-native';
 import {DukaanColors, Radii, Space} from '../constants/theme';
 import {SHOP_TYPES} from '../constants/shopTypes';
 import {INDIAN_STATES} from '../constants/states';
+import {
+  BUSINESS_MODES,
+  DEFAULT_BUSINESS_MODE,
+  type BusinessMode,
+} from '../constants/businessModes';
+import {DEFAULT_UNIT, UNIT_OPTIONS} from '../constants/units';
 import {validateProfileForm, type ProfileErrors} from '../utils/validation';
 import {SelectField} from './SelectField';
-import {AppText, Button, Field, Input, Textarea, Toggle} from './ui';
+import {AppText, Button, Chip, Field, Input, Segmented, Textarea, Toggle} from './ui';
 import type {ShopProfile, ShopProfileInput} from '../models/ShopProfile';
 
 interface Props {
@@ -14,6 +20,8 @@ interface Props {
   submitLabel: string;
   saving?: boolean;
   onSubmit: (input: ShopProfileInput) => void;
+  /** Optional content rendered above the form (e.g. a Settings summary card). */
+  header?: React.ReactNode;
 }
 
 /** Shared shop setup / settings form (one form, two screens). DUKAAN styling. */
@@ -22,6 +30,7 @@ export function ProfileForm({
   submitLabel,
   saving = false,
   onSubmit,
+  header,
 }: Props): React.JSX.Element {
   const [shopType, setShopType] = useState<string | null>(
     initial?.shopType ?? null,
@@ -34,9 +43,22 @@ export function ProfileForm({
   const [stateCode, setStateCode] = useState<string | null>(
     initial?.stateCode ?? null,
   );
+  const [businessMode, setBusinessMode] = useState<BusinessMode>(
+    initial?.businessMode ?? DEFAULT_BUSINESS_MODE,
+  );
+  const [defaultUnit, setDefaultUnit] = useState<string>(
+    initial?.defaultUnit ?? DEFAULT_UNIT,
+  );
   const [errors, setErrors] = useState<ProfileErrors>({});
 
+  // The default unit only applies to goods — a pure-service shop has no stock.
+  const showDefaultUnit = businessMode !== 'service';
+
   const shopTypeOptions = SHOP_TYPES.map(t => ({label: t.label, value: t.id}));
+  const businessModeOptions = BUSINESS_MODES.map(m => ({
+    label: m.label,
+    value: m.id,
+  }));
   const stateOptions = INDIAN_STATES.map(s => ({
     label: `${s.name} (${s.code})`,
     value: s.code,
@@ -65,6 +87,8 @@ export function ProfileForm({
       gstin: gstEnabled ? gstin : null,
       state: gstEnabled ? stateInfo?.name ?? null : null,
       stateCode: gstEnabled ? stateCode : null,
+      businessMode,
+      defaultUnit: showDefaultUnit ? defaultUnit : null,
     });
   };
 
@@ -73,6 +97,15 @@ export function ProfileForm({
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">
+      {header}
+      <Field label="What do you sell?">
+        <Segmented<BusinessMode>
+          options={businessModeOptions}
+          value={businessMode}
+          onChange={setBusinessMode}
+        />
+      </Field>
+
       <SelectField
         label="Shop type"
         placeholder="Select your shop type"
@@ -81,6 +114,22 @@ export function ProfileForm({
         onSelect={setShopType}
         error={errors.shopType}
       />
+
+      {showDefaultUnit ? (
+        <Field label="Default selling unit" style={styles.block}>
+          <View style={styles.chips}>
+            {UNIT_OPTIONS.map(o => (
+              <Chip
+                key={o.code}
+                label={o.label}
+                variant="primary"
+                active={defaultUnit === o.code}
+                onPress={() => setDefaultUnit(o.code)}
+              />
+            ))}
+          </View>
+        </Field>
+      ) : null}
 
       <Field label="Shop name" style={styles.block}>
         <Input
@@ -169,6 +218,7 @@ const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: DukaanColors.bg},
   content: {padding: Space.lg, paddingBottom: Space.xxxl, gap: Space.sm},
   block: {marginTop: Space.sm},
+  chips: {flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm},
   error: {marginTop: -Space.xs},
   gstRow: {
     flexDirection: 'row',

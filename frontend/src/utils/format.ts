@@ -9,6 +9,19 @@ export function formatPrice(price: number): string {
   return `${Config.currencySymbol}${text}`;
 }
 
+/**
+ * Format a (possibly fractional) quantity for display: whole numbers show
+ * plain (2), fractional units trim trailing zeros (1.5, 1.25), capped at 3
+ * decimals so float drift never leaks (1.250000001 -> 1.25).
+ */
+export function formatQuantity(qty: number): string {
+  const n = Number.isFinite(qty) ? qty : 0;
+  if (Number.isInteger(n)) {
+    return String(n);
+  }
+  return String(parseFloat(n.toFixed(3)));
+}
+
 /** Format an epoch-millis timestamp as a short readable date + time. */
 export function formatDateTime(epochMs: number): string {
   const d = new Date(epochMs);

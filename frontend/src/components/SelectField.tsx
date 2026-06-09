@@ -1,6 +1,6 @@
 import React, {useMemo, useState} from 'react';
 import {ScrollView, StyleSheet, View} from 'react-native';
-import {AppText, BottomSheet, Field, Input, Row, Select} from './ui';
+import {AppText, BottomSheet, Field, Input, Row, Select, Icon} from './ui';
 import {DukaanColors, Space} from '../constants/theme';
 
 export interface SelectOption {
@@ -84,9 +84,7 @@ export function SelectField({
               }}
               right={
                 o.value === value ? (
-                  <AppText weight="800" color={DukaanColors.primary}>
-                    ✓
-                  </AppText>
+                  <Icon name="check" size={18} color={DukaanColors.primary} strokeWidth={2.4} />
                 ) : undefined
               }
               divider

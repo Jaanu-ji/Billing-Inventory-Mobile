@@ -161,14 +161,63 @@ export const Badges = {
 
 /**
  * Font families (spec §2). Display/headings/ALL numbers use Sora; UI/body use
- * Plus Jakarta Sans. These are not bundled yet (Phase A3), so both resolve to
- * the platform default for now — set the real family names here when the fonts
- * are linked, and the whole app picks them up. `undefined` => system font.
+ * Plus Jakarta Sans — both bundled in Phase A3 (`assets/fonts`, see
+ * `react-native.config.js`).
+ *
+ * IMPORTANT — why per-weight "face" names instead of one family + `fontWeight`:
+ * these fonts ship as separate static TTFs whose internal families are split
+ * (`Sora`, `Sora Medium`, `Sora SemiBold`, `Sora ExtraBold`, …). On Android RN
+ * resolves a custom `fontFamily` by the **asset file name**, and `fontWeight`
+ * does NOT pick a different weight file — so a single `'Sora'` family would only
+ * ever render Regular/Bold. We therefore reference the exact face per weight
+ * (e.g. `'Sora-SemiBold'`). That file name == the font's PostScript name, so the
+ * same string also matches on iOS. Always resolve via `fontFace()` below; don't
+ * hand-write face strings or set `fontFamily` to a base family name.
+ *
+ * `FontFamily.display/ui` keep the base family names for reference only — do not
+ * use them directly as a `fontFamily` value (won't resolve on Android).
  */
 export const FontFamily = {
-  display: undefined as string | undefined, // -> 'Sora' after A3
-  ui: undefined as string | undefined, // -> 'PlusJakartaSans' after A3
+  display: 'Sora',
+  ui: 'Plus Jakarta Sans',
 } as const;
+
+export type FontFaceKind = 'display' | 'ui';
+
+/** Sora faces by weight (bundled 400–800). */
+const DISPLAY_FACES = {
+  '400': 'Sora-Regular',
+  '500': 'Sora-Medium',
+  '600': 'Sora-SemiBold',
+  '700': 'Sora-Bold',
+  '800': 'Sora-ExtraBold',
+} as const;
+
+/** Plus Jakarta Sans faces by weight (bundled 400–700; 800 clamps to 700). */
+const UI_FACES = {
+  '400': 'PlusJakartaSans-Regular',
+  '500': 'PlusJakartaSans-Medium',
+  '600': 'PlusJakartaSans-SemiBold',
+  '700': 'PlusJakartaSans-Bold',
+} as const;
+
+/**
+ * Resolve the bundled font-file name for a kind + weight. Unknown weights fall
+ * back to Regular; the UI family has no 800, so 800 clamps to Bold (700).
+ */
+export function fontFace(
+  kind: FontFaceKind,
+  weight: string | number = '400',
+): string {
+  const w = String(weight);
+  if (kind === 'display') {
+    return DISPLAY_FACES[w as keyof typeof DISPLAY_FACES] ?? DISPLAY_FACES['400'];
+  }
+  return (
+    UI_FACES[w as keyof typeof UI_FACES] ??
+    (w === '800' ? UI_FACES['700'] : UI_FACES['400'])
+  );
+}
 
 /** Font weights as RN-typed string literals (spec §2 weights 400–800). */
 export const FontWeight = {
@@ -189,71 +238,75 @@ export const FontWeight = {
  */
 export const Typography = {
   display: {
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', FontWeight.extrabold),
     fontSize: 40,
     lineHeight: 41, // 40 × 1.02
     fontWeight: FontWeight.extrabold,
     letterSpacing: -1.2, // -0.03em
   },
   h1: {
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', FontWeight.bold),
     fontSize: 26,
     lineHeight: 29, // 26 × 1.10
     fontWeight: FontWeight.bold,
     letterSpacing: -0.5, // -0.02em
   },
   h2: {
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', FontWeight.bold),
     fontSize: 20,
     lineHeight: 23, // 20 × 1.15
     fontWeight: FontWeight.bold,
     letterSpacing: -0.4, // -0.02em
   },
   h3: {
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', FontWeight.semibold),
     fontSize: 17,
     lineHeight: 20, // 17 × 1.20
     fontWeight: FontWeight.semibold,
     letterSpacing: -0.2, // -0.01em
   },
   body: {
-    fontFamily: FontFamily.ui,
+    fontFamily: fontFace('ui', FontWeight.medium),
     fontSize: 16,
     lineHeight: 23, // 16 × 1.45
     fontWeight: FontWeight.medium,
     letterSpacing: -0.16, // global -0.01em
   },
   bodySm: {
-    fontFamily: FontFamily.ui,
+    fontFamily: fontFace('ui', FontWeight.medium),
     fontSize: 14,
     lineHeight: 20, // 14 × 1.45
     fontWeight: FontWeight.medium,
     letterSpacing: -0.14,
   },
   label: {
-    fontFamily: FontFamily.ui,
+    fontFamily: fontFace('ui', FontWeight.semibold),
     fontSize: 13,
     lineHeight: 18,
     fontWeight: FontWeight.semibold,
     letterSpacing: 0.13, // 0.01em
   },
   cap: {
-    fontFamily: FontFamily.ui,
+    fontFamily: fontFace('ui', FontWeight.semibold),
     fontSize: 12,
     lineHeight: 16,
     fontWeight: FontWeight.semibold,
     letterSpacing: 0.24, // 0.02em
   },
   overline: {
-    fontFamily: FontFamily.ui,
+    fontFamily: fontFace('ui', FontWeight.bold),
     fontSize: 11,
     lineHeight: 14,
     fontWeight: FontWeight.bold,
     letterSpacing: 1, // 0.09em, UPPERCASE at call site
   },
-  /** Spread onto any money/number text for aligned tabular figures (spec §2). */
+  /**
+   * Spread onto any money/number text for aligned tabular figures (spec §2).
+   * Numbers are Sora; defaults to SemiBold — for AppText prefer `numeric` which
+   * matches the surrounding variant's weight via `fontFace`.
+   */
   numeric: {
-    fontFamily: FontFamily.display,
+    fontFamily: fontFace('display', FontWeight.semibold),
     fontVariant: ['tabular-nums'] as const,
   },
 } as const;

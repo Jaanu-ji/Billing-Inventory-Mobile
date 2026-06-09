@@ -19,6 +19,7 @@ import {scanService} from '../services/ScanService';
 import {ProfileService} from '../services/ProfileService';
 import {productRepository} from '../repositories/ProductRepository';
 import {Config} from '../constants/config';
+import {unitLabel} from '../constants/units';
 import {DukaanColors, Palette, Radii, Space} from '../constants/theme';
 import {formatPrice} from '../utils/format';
 import type {Product} from '../models/Product';
@@ -49,6 +50,9 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
   const [torchOn, setTorchOn] = useState(false);
   // Whether to capture GST rate + HSN when adding an unknown product.
   const [gstEnabled, setGstEnabled] = useState(false);
+  // Business-adaptive product fields + default unit for new products (Phase H).
+  const [shopType, setShopType] = useState<string | null>(null);
+  const [defaultUnit, setDefaultUnit] = useState<string | null>(null);
 
   // Refs so the camera callback always reads fresh values (avoids stale closure)
   // and so we don't process new scans while a modal/save is happening.
@@ -62,10 +66,14 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
     }
   }, [hasPermission, requestPermission]);
 
-  // Read whether the shop bills GST, to decide if the add-product form should
-  // ask for GST rate + HSN.
+  // Read the shop profile: GST (for the GST rate + HSN fields), shop type (for
+  // business-adaptive product fields) and the default selling unit.
   useEffect(() => {
-    ProfileService.isGstEnabled().then(setGstEnabled);
+    ProfileService.getProfile().then(p => {
+      setGstEnabled(p?.gstEnabled ?? false);
+      setShopType(p?.shopType ?? null);
+      setDefaultUnit(p?.defaultUnit ?? null);
+    });
   }, []);
 
   // Keep busyRef in sync: don't process new scans while any product UI is up
@@ -179,6 +187,9 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
         price: values.price,
         gstRate: values.gstRate,
         hsnCode: values.hsnCode,
+        unit: values.unit,
+        category: values.category,
+        attributes: values.attributes,
       });
       setPendingBarcode(null);
       busyRef.current = false;
@@ -227,6 +238,9 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
         price: values.price,
         gstRate: values.gstRate,
         hsnCode: values.hsnCode,
+        unit: values.unit,
+        category: values.category,
+        attributes: values.attributes,
       });
       const code = editingProduct.barcode;
       setEditingProduct(null);
@@ -349,6 +363,9 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
             <AppText variant="h1" numeric style={styles.knownPrice}>
               {formatPrice(knownProduct.price)}
             </AppText>
+            <AppText variant="bodySm" color={DukaanColors.textMuted}>
+              / {unitLabel(knownProduct.unit)}
+            </AppText>
             {gstEnabled && knownProduct.gstRate > 0 ? (
               <AppText variant="bodySm" color={DukaanColors.textMuted}>
                 GST {knownProduct.gstRate}%
@@ -377,6 +394,8 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
         visible={pendingBarcode !== null}
         title="New product"
         barcode={pendingBarcode ?? undefined}
+        initialUnit={defaultUnit ?? undefined}
+        shopType={shopType}
         showGst={gstEnabled}
         submitLabel="Save product"
         saving={saving}
@@ -393,6 +412,10 @@ export function ScanScreen({navigation}: Props): React.JSX.Element {
         initialPrice={editingProduct?.price}
         initialGstRate={editingProduct?.gstRate}
         initialHsnCode={editingProduct?.hsnCode}
+        initialUnit={editingProduct?.unit}
+        initialCategory={editingProduct?.category}
+        initialAttributes={editingProduct?.attributes}
+        shopType={shopType}
         showGst={gstEnabled}
         submitLabel="Save changes"
         saving={savingEdit}
